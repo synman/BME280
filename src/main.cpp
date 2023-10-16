@@ -35,15 +35,14 @@ char humidSensorName[80];
 char presSensorName[80];
 char altSensorName[80];
 
-HASensorNumber *tempSensor;
-HASensorNumber *humidSensor;
-HASensorNumber *presSensor;
-HASensorNumber *altSensor;
+HASensorNumber* tempSensor;
+HASensorNumber* humidSensor;
+HASensorNumber* presSensor;
+HASensorNumber* altSensor;
 
 unsigned long lastSensorUpdate = -60001;
 
-void setup()
-{
+void setup() {
   INIT_LED;
 
   Serial.begin(115200);
@@ -51,8 +50,7 @@ void setup()
   Serial.println("");
   Serial.println("BME280 Sensor Event Publisher v1.0.0");
 
-  while (!bme.begin())
-  {
+  while (!bme.begin()) {
     Serial.println(F("Could not find a valid BME280 sensor, check wiring!"));
     delay(1000);
   }
@@ -69,29 +67,25 @@ void setup()
   WiFi.hostname(hostname);
   WiFi.mode(wifimode);
 
-  if (wifimode == WIFI_STA)
-  {
+  if (wifimode == WIFI_STA) {
     Serial.print("Connecting to ");
     Serial.print(ssid);
 
     WiFi.begin(ssid.c_str(), ssid_pwd.c_str());
-    for (unsigned char x = 0; x < 60 && WiFi.status() != WL_CONNECTED; x++)
-    {
+    for (unsigned char x = 0; x < 60 && WiFi.status() != WL_CONNECTED; x++) {
       blink();
       Serial.print(".");
     }
 
     Serial.println("");
 
-    if (WiFi.status() == WL_CONNECTED)
-    {
+    if (WiFi.status() == WL_CONNECTED) {
       // initialize time
       configTime(0, 0, "pool.ntp.org");
       setenv("TZ", "EST+5EDT,M3.2.0/2,M11.1.0/2", 1);
       tzset();
 
-      if (!getLocalTime(&timeinfo))
-      {
+      if (!getLocalTime(&timeinfo)) {
         Serial.println("Failed to obtain time");
       }
       sprintf(buf, "%4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
@@ -100,8 +94,7 @@ void setup()
     }
   }
 
-  if (WiFi.status() != WL_CONNECTED || wifimode == WIFI_AP)
-  {
+  if (WiFi.status() != WL_CONNECTED || wifimode == WIFI_AP) {
     wifimode = WIFI_AP;
     WiFi.mode(wifimode);
     WiFi.softAP(ap_name);
@@ -132,12 +125,9 @@ void setup()
 
   Serial.println("ElegantOTA started");
 
-  if (!LittleFS.begin())
-  {
+  if (!LittleFS.begin()) {
     Serial.println("An Error has occurred while mounting LittleFS");
-  }
-  else
-  {
+  } else {
     Serial.println("LittleFS filesystem started");
   }
 
@@ -149,8 +139,7 @@ void setup()
   String uniqueId = String(config.hostname);
   std::replace(uniqueId.begin(), uniqueId.end(), '-', '_');
 
-  for (unsigned short i = 0; i < uniqueId.length(); i++)
-  {
+  for (unsigned short i = 0; i < uniqueId.length(); i++) {
     deviceId[i] = (byte)uniqueId[i];
   }
 
@@ -190,8 +179,7 @@ void setup()
   humidSensor->setUnitOfMeasurement("%");
 
   // fire up mqtt client if in station mode
-  if (wifimode == WIFI_STA)
-  {
+  if (wifimode == WIFI_STA) {
     mqtt.begin(mqtt_server.c_str(), mqtt_user.c_str(), mqtt_pwd.c_str());
     Serial.println("MQTT started");
   }
@@ -200,15 +188,11 @@ void setup()
   Serial.println("\nSystem Ready\n");
 }
 
-void loop()
-{
+void loop() {
   // captive portal if in AP mode
-  if (wifimode == WIFI_AP)
-  {
+  if (wifimode == WIFI_AP) {
     dnsServer.processNextRequest();
-  }
-  else
-  {
+  } else {
     // handle MQTT
     mqtt.loop();
   }
@@ -217,17 +201,13 @@ void loop()
   ArduinoOTA.handle();
   ElegantOTA.loop();
 
-  if ((millis() - lastSensorUpdate) > 59999)
-  {
+  if ((millis() - lastSensorUpdate) > 59999) {
     sensors_event_t temp_event, pressure_event, humidity_event;
     String timestamp;
 
-    if (!getLocalTime(&timeinfo))
-    {
+    if (!getLocalTime(&timeinfo)) {
       timestamp = "Failed to obtain time";
-    }
-    else
-    {
+    } else {
       sprintf(buf, "%4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
       timestamp = String(buf);
     }
@@ -275,14 +255,12 @@ void loop()
   // it doesn't seem right to never sleep so we'll delay for 1ms
   delay(1);
 
-  if (ota_needs_reboot)
-  {
+  if (ota_needs_reboot) {
     ElegantOTA.loop();
     delay(1000);
     Serial.println("\nOTA Reboot Triggered. . .\n");
     ESP.restart();
-    while (1)
-    {
+    while (1) {
     } // will never get here
   }
 }

@@ -6,8 +6,7 @@
 #define MQTT_USER_LEN 16
 #define MQTT_PASSWD_LEN 32
 
-typedef struct config_type
-{
+typedef struct config_type {
     unsigned char hostname_flag;
     char hostname[HOSTNAME_LEN];
     unsigned char ssid_flag;
