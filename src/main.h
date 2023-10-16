@@ -18,19 +18,9 @@
 #include "config.h"
 
 // LED is connected to GPIO2 on this board
-#define INIT_LED              \
-    {                         \
-        pinMode(2, OUTPUT);   \
-        digitalWrite(2, LOW); \
-    }
-#define LED_ON                 \
-    {                          \
-        digitalWrite(2, HIGH); \
-    }
-#define LED_OFF               \
-    {                         \
-        digitalWrite(2, LOW); \
-    }
+#define INIT_LED { pinMode(2, OUTPUT); digitalWrite(2, LOW); }
+#define LED_ON   { digitalWrite(2, HIGH); }
+#define LED_OFF  { digitalWrite(2, LOW); }
 
 void blink() {
     LED_ON;
@@ -208,11 +198,17 @@ void updateIndexTemplate(String temperature, String humidity, String altitude, S
             html.replace("{timestamp}", timestamp);
         }
 
-        if (LittleFS.exists("/index.html"))
-            LittleFS.remove("/index.html");
-        File _index = LittleFS.open("/index.html", "w");
+        if (LittleFS.exists("/index.html.new"))
+            LittleFS.remove("/index.html.new");
+
+        File _index = LittleFS.open("/index.html.new", "w");
         _index.print(html.c_str());
         _index.close();
+
+        if (LittleFS.exists("/index.html"))
+            LittleFS.remove("/index.html");
+
+        LittleFS.rename("/index.html.new", "/index.html");
     }
 }
 
@@ -255,7 +251,7 @@ void wireWebServerAndPaths() {
     // define default document
     server.on("/", HTTP_GET, [](AsyncWebServerRequest* request)
         {
-            request->send(LittleFS, "/index.html", "text/html");
+            request->redirect("/index.html");
             Serial.println(request->url() + " handled");
         });
 
@@ -387,12 +383,18 @@ void wireWebServerAndPaths() {
             Serial.println(request->url() + " handled");
         });
 
-    // 404
+    // 404 (includes file handling)
     server.onNotFound([](AsyncWebServerRequest* request)
         {
             if (LittleFS.exists(request->url())) {
                 AsyncWebServerResponse* response = request->beginResponse(LittleFS, request->url(), String());
-                response->addHeader("Cache-Control", "max-age=604800");
+                String url = request->url(); url.toLowerCase();
+                // only chache digital assets
+                if (url.indexOf(".png") != -1 || url.indexOf(".jpg") != -1 || url.indexOf(".ico") != -1 || url.indexOf(".svg") != -1) {
+                    response->addHeader("Cache-Control", "max-age=604800");
+                } else {
+                    response->addHeader("Cache-Control", "no-store");
+                }
                 request->send(response);
                 Serial.println(request->url() + " handled");
             } else {

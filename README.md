@@ -11,7 +11,7 @@
 - ayushsharma82 -  https://github.com/ayushsharma82/ElegantOTA
 
 ## ESP32 Integration Notes
-ESP32-D0WD-V3 (revision v3.0) 4MB Flash
+ESP32-D0WD-V3 (revision v3.0) 4MB Flash - NOT PICTURED
 <center><img width=40% src=https://i0.wp.com/randomnerdtutorials.com/wp-content/uploads/2019/06/ESP32-bme280_schematic.jpg></center>
 
 ## Highlights
