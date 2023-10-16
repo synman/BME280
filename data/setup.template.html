@@ -1,0 +1,97 @@
+<!DOCTYPE html 
+      PUBLIC "-//W3C//DTD HTML 4.01//EN"
+      "http://www.w3.org/TR/html4/strict.dtd">
+<html lang="en-US">
+    <head profile="http://www.w3.org/2005/10/profile">
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+        <link rel="manifest" href="/site.webmanifest">
+        <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
+        <meta name="msapplication-TileColor" content="#da532c">
+        <meta name="theme-color" content="#ffffff">
+        <meta name='viewport' content='width=device-width, initial-scale=1'>
+        <title>BME280 Publisher Setup</title>
+        <style>
+            body {
+                text-align: center;
+                font-family: 'Trebuchet MS', Arial;
+            }
+            .input_field {
+                padding:5px;
+                font-size:12px;
+                font-family: 'Trebuchet MS', Arial;
+                width: 150px;
+            }
+            table {
+                border-collapse: collapse;
+                width: 35pct;
+                margin-left: auto;
+                margin-right: auto;
+            }
+            th {
+                padding: 12px;
+                background-color: #0043af;
+                color: white;
+            }
+            tr {
+                border: 1px solid #ddd;
+                padding: 12px;
+            }
+            td {
+                border: none;
+                padding: 12px;
+            }
+        </style>
+    </head>
+    <body>
+        <table>
+            <tr height="50px">
+                <th colspan="2">
+                    <img valign="middle" src="/favicon-32x32.png">&nbsp;BME280 Publisher Setup
+                </th>
+            </tr>
+            <tr>
+                <td>Hostname</td>
+                <td><input class="input_field" id='hostname' type='text' value='%hostname%'/></td>
+            </tr>
+            <tr>
+                <td>SSID</td>
+                <td><input class="input_field" id='ssid' type='text' value='%ssid%'/></td>
+            </tr>
+            <tr>
+                <td>SSID Password</td>
+                <td><input class="input_field" id='ssid_pwd' type='password' value='%ssid_pwd%'/></td>
+            </tr>
+            <tr>
+                <td>MQTT Server</td>
+                <td><input class="input_field" id='mqtt_server' type='text' value='%mqtt_server%'/></td>
+            </tr>
+            <tr>
+                <td>MQTT User</td>
+                <td><input class="input_field" id='mqtt_user' type='text' value='%mqtt_user%'/></td>
+            </tr>
+            <tr>
+                <td>MQTT Password</td>
+                <td><input class="input_field" id='mqtt_pwd' type='password' value='%mqtt_pwd%'/></td>
+            </tr>
+            <tr height="50px">
+                <td colspan="2">
+                    <input type='submit' onclick='save()' value='Save'/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                    <input type='submit' onclick='reboot()' value='Reboot'/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                    <input type='submit' onclick='ota()' value="OTA">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                    <input type='submit' onclick='sensors()' value="Sensors">
+            </tr>
+        </table>
+        <br>
+        <hr>
+        <small>timestamp: %timestamp%</small>
+    </body>
+
+	<script language='javascript'>
+        function save() { window.location.href=location.protocol + '//' + location.host + '/save/?hostname=' + hostname.value + '&ssid=' + ssid.value + '&ssid_pwd=' + ssid_pwd.value + "&mqtt_server=" + mqtt_server.value + "&mqtt_user=" + mqtt_user.value + "&mqtt_pwd=" + mqtt_pwd.value; }
+        function reboot() { window.location.href=location.protocol + '//' + location.host + '/reboot'; }
+        function ota() { window.location.href=location.protocol + '//' + location.host + '/update'; }
+        function sensors() { window.location.href=location.protocol + '//' + location.host + '/'; }
+	</script>
+</html>
