@@ -22,19 +22,22 @@ typedef struct config_type {
 } CONFIG_TYPE;
 
 typedef struct samples_type {
-    float temperature;
-    float humidity;
-    float altitude;
-    float pressure;
-    float high_temperature;
-    float high_humidity;
-    float high_altitude;
-    float high_pressure;
-    float low_temperature;
-    float low_humidity;
-    float low_altitude;
-    float low_pressure;
-    unsigned short sample_count;
+    float temperature = 0;
+    float humidity = 0;
+    float altitude = 0;
+    float pressure = 0;
+    float rssi = 0;
+    float high_temperature = std::numeric_limits<float>::min();
+    float high_humidity = std::numeric_limits<float>::min();
+    float high_altitude = std::numeric_limits<float>::min();
+    float high_pressure = std::numeric_limits<float>::min();
+    float high_rssi = std::numeric_limits<float>::min();
+    float low_temperature = std::numeric_limits<float>::max();
+    float low_humidity = std::numeric_limits<float>::max();
+    float low_altitude = std::numeric_limits<float>::max();
+    float low_pressure = std::numeric_limits<float>::max();
+    float low_rssi = std::numeric_limits<float>::max();
+    unsigned short sample_count = 0;
     unsigned long last_update = -5001;
 } SAMPLES_TYPE;
 

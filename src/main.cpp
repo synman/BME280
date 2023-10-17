@@ -34,11 +34,13 @@ char tempSensorName[80];
 char humidSensorName[80];
 char presSensorName[80];
 char altSensorName[80];
+char rssiSensorName[80];
 
 HASensorNumber* tempSensor;
 HASensorNumber* humidSensor;
 HASensorNumber* presSensor;
 HASensorNumber* altSensor;
+HASensorNumber* rssiSensor;
 
 unsigned long lastSensorUpdate = -60001;
 
@@ -46,7 +48,7 @@ void setup() {
   INIT_LED;
   
   SerialAndTelnet.setWelcomeMsg(F("BME280 diagnostics\r\n\n"));
-  LOG.begin(115200);
+  LOG.begin(1500000);
 
   LOG.println("");
   LOG.println("");
@@ -69,11 +71,26 @@ void setup() {
   WiFi.hostname(hostname);
   WiFi.mode(wifimode);
 
-  if (wifimode == WIFI_STA) {
-    LOG.print("Connecting to ");
-    LOG.print(ssid);
+  // WiFi.scanNetworks will return the number of networks found
+  uint8_t *bestBssid;
+  short bestRssi = std::numeric_limits<short>::min();
+  int n = WiFi.scanNetworks();
 
-    WiFi.begin(ssid.c_str(), ssid_pwd.c_str());
+  // arduino is too stupid to know which AP has the best signal
+  // when connecting to an SSID with multiple BSSIDs (WAPs / Repeaters)
+  // so we find the best one and tell it to use it
+  if (n > 0 && ssid.length() > 0) {
+    for (int i = 0; i < n; ++i) {
+      if (WiFi.SSID(i).equals(ssid.c_str()) && WiFi.RSSI(i) > bestRssi) {
+        bestRssi = WiFi.RSSI(i);
+        bestBssid = WiFi.BSSID(i);
+      }
+    }
+  }
+
+  if (wifimode == WIFI_STA && bestRssi != std::numeric_limits<short>::min()) {
+    LOG.print("Connecting to "); LOG.print(ssid);
+    WiFi.begin(ssid.c_str(), ssid_pwd.c_str(), 0, bestBssid, true);
     for (unsigned char x = 0; x < 60 && WiFi.status() != WL_CONNECTED; x++) {
       blink();
       LOG.print(".");
@@ -103,7 +120,7 @@ void setup() {
     dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
     LOG.println("\nSoftAP [" + ap_name + "] started\n");
   }
-
+      
   LOG.print("    Hostname: "); LOG.println(hostname);
   LOG.print("Connected to: "); LOG.println(wifimode == WIFI_STA ? ssid : ap_name);
   LOG.print("  IP address: "); LOG.println(wifimode == WIFI_STA ? WiFi.localIP().toString() : WiFi.softAPIP().toString());
@@ -147,27 +164,33 @@ void setup() {
   strcpy(humidSensorName, (uniqueId + "_humdity_sensor").c_str());
   strcpy(presSensorName, (uniqueId + "_pressure_sensor").c_str());
   strcpy(altSensorName, (uniqueId + "_altitude_sensor").c_str());
+  strcpy(rssiSensorName, (uniqueId + "_rssi_sensor").c_str());
 
   tempSensor = new HASensorNumber(tempSensorName, HASensorNumber::PrecisionP2);
   humidSensor = new HASensorNumber(humidSensorName, HASensorNumber::PrecisionP2);
   presSensor = new HASensorNumber(presSensorName, HASensorNumber::PrecisionP3);
   altSensor = new HASensorNumber(altSensorName, HASensorNumber::PrecisionP1);
+  rssiSensor = new HASensorNumber(rssiSensorName, HASensorNumber::PrecisionP2);
 
   tempSensor->setDeviceClass("temperature");
   tempSensor->setName("Temperature");
   tempSensor->setUnitOfMeasurement("F");
 
-  presSensor->setDeviceClass("atmospheric_pressure");
-  presSensor->setName("Barometer");
-  presSensor->setUnitOfMeasurement("inHg");
+  humidSensor->setDeviceClass("humidity");
+  humidSensor->setName("Humidity");
+  humidSensor->setUnitOfMeasurement("%");
 
   altSensor->setIcon("mdi:waves-arrow-up");
   altSensor->setName("Altitude");
   altSensor->setUnitOfMeasurement("M");
+  
+  presSensor->setDeviceClass("atmospheric_pressure");
+  presSensor->setName("Barometer");
+  presSensor->setUnitOfMeasurement("inHg");
 
-  humidSensor->setDeviceClass("humidity");
-  humidSensor->setName(" Humidity");
-  humidSensor->setUnitOfMeasurement("%");
+  rssiSensor->setDeviceClass("signal_strength");
+  rssiSensor->setName("rssi");
+  rssiSensor->setUnitOfMeasurement("dB");
 
   // wire up http server and paths
   wireWebServerAndPaths();
@@ -215,22 +238,47 @@ void loop() {
     bme_humidity->getEvent(&humidity_event);
     float currentHumid = humidity_event.relative_humidity;
 
+    float currentRssi = WiFi.RSSI();
+    
     if (currentTemp > samples.high_temperature) samples.high_temperature = currentTemp;
     if (currentHumid > samples.high_humidity) samples.high_humidity = currentHumid;
     if (currentAlt > samples.high_altitude) samples.high_altitude = currentAlt;
     if (currentPres > samples.high_pressure) samples.high_pressure = currentPres;
+    if (currentRssi > samples.high_rssi) samples.high_rssi = currentRssi;
 
     if (currentTemp < samples.low_temperature) samples.low_temperature = currentTemp;
     if (currentHumid < samples.low_humidity) samples.low_humidity = currentHumid;
     if (currentAlt < samples.low_altitude) samples.low_altitude = currentAlt;
     if (currentPres < samples.low_pressure) samples.low_pressure = currentPres;
+    if (currentRssi < samples.low_rssi) samples.low_rssi = currentRssi;
 
     samples.temperature+=currentTemp;
     samples.humidity+=currentHumid;
     samples.altitude+=currentAlt;
     samples.pressure+=currentPres;
+    samples.rssi+=currentRssi;
 
     LOG.println("Gathered Sample #" + String(samples.sample_count));
+
+    LOG.print(F("Temperature = "));
+    LOG.print(currentTemp);
+    LOG.println(" *F");
+
+    LOG.print(F("Humidity    = "));
+    LOG.print(currentHumid);
+    LOG.println(" %");
+
+    LOG.print(F("Altitude    = "));
+    LOG.print(currentAlt);
+    LOG.println(" m");
+
+    LOG.print(F("Pressure    = "));
+    LOG.print(currentPres);
+    LOG.println(" inHg");
+
+    LOG.print(F("rssi        = "));
+    LOG.print(currentRssi);
+    LOG.println(" dB\n");
 
     samples.last_update = sysmillis;
     if (samples.sample_count == 1) lastSensorUpdate = sysmillis;
@@ -254,6 +302,7 @@ void loop() {
     samples.humidity = samples.humidity - (samples.low_humidity + samples.high_humidity);
     samples.altitude = samples.altitude - (samples.low_altitude + samples.high_altitude);
     samples.pressure = samples.pressure - (samples.low_pressure + samples.high_pressure);
+    samples.rssi = samples.rssi - (samples.low_rssi + samples.high_rssi);
 
     // account for removed outliers
     samples.sample_count-=2;
@@ -263,6 +312,7 @@ void loop() {
     float currentHumid = samples.humidity / samples.sample_count;
     float currentAlt = samples.altitude / samples.sample_count;
     float currentPres = samples.pressure / samples.sample_count;
+    float currentRssi = samples.rssi / samples.sample_count;
 
     LOG.print(F("Temperature = "));
     LOG.print(currentTemp);
@@ -272,40 +322,48 @@ void loop() {
     LOG.print(currentHumid);
     LOG.println(" %");
 
+    LOG.print(F("Altitude    = "));
+    LOG.print(currentAlt);
+    LOG.println(" m");
+
     LOG.print(F("Pressure    = "));
     LOG.print(currentPres);
     LOG.println(" inHg");
 
-    LOG.print(F("Altitude    = "));
-    LOG.print(currentAlt);
-    LOG.println(" m\n");
+    LOG.print(F("rssi        = "));
+    LOG.print(currentRssi);
+    LOG.println(" dB\n");
 
     tempSensor->setValue(currentTemp);
-    presSensor->setValue(currentPres);
-    altSensor->setValue(currentAlt);
     humidSensor->setValue(currentHumid);
+    altSensor->setValue(currentAlt);
+    presSensor->setValue(currentPres);
+    rssiSensor->setValue(currentRssi);
 
-    updateIndexTemplate(String(currentTemp), String(currentHumid), String(currentAlt), String(currentPres), timestamp);
+    updateIndexTemplate(String(currentTemp), String(currentHumid), String(currentAlt), String(currentPres), String(currentRssi), timestamp);
 
     // reset our samples structure
     samples.temperature = 0;
     samples.humidity = 0;
     samples.altitude = 0;
     samples.pressure = 0;
+    samples.rssi = 0;
 
     samples.high_temperature = std::numeric_limits<float>::min();
     samples.high_humidity = std::numeric_limits<float>::min();
     samples.high_altitude = std::numeric_limits<float>::min();
     samples.high_pressure = std::numeric_limits<float>::min();
+    samples.high_rssi = std::numeric_limits<float>::min();
 
     samples.low_temperature = std::numeric_limits<float>::max();
     samples.low_humidity = std::numeric_limits<float>::max();
     samples.low_altitude = std::numeric_limits<float>::max();
     samples.low_pressure = std::numeric_limits<float>::max();
+    samples.low_rssi = std::numeric_limits<float>::max();
 
     samples.sample_count = 0;
-
     lastSensorUpdate = sysmillis;
+
     blink();
   }
 

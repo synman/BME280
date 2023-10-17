@@ -175,7 +175,7 @@ String template_processor(const String& var) {
     return result;
 }
 
-void updateIndexTemplate(String temperature, String humidity, String altitude, String pressure, String timestamp) {
+void updateIndexTemplate(String temperature, String humidity, String altitude, String pressure, String rssi, String timestamp) {
     // create new index based on active config
     File _template = LittleFS.open("/index.template.html", "r");
 
@@ -197,6 +197,10 @@ void updateIndexTemplate(String temperature, String humidity, String altitude, S
 
         while (html.indexOf("{pressure}", 0) != -1) {
             html.replace("{pressure}", pressure);
+        }
+
+        while (html.indexOf("{rssi}", 0) != -1) {
+            html.replace("{rssi}", rssi);
         }
 
         while (html.indexOf("{timestamp}", 0) != -1) {
