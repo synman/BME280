@@ -15,6 +15,8 @@
 #include <ESPAsyncWebServer.h>
 #include <ElegantOTA.h>
 
+#include <TelnetSpy.h>
+
 #include "config.h"
 
 // LED is connected to GPIO2 on this board
@@ -31,6 +33,9 @@ void blink() {
     delay(200);
     LED_OFF;
 }
+
+#define LOG SerialAndTelnet
+TelnetSpy SerialAndTelnet;
 
 Adafruit_BME280 bme; // use I2C interface
 Adafruit_Sensor* bme_temp = bme.getTemperatureSensor();
@@ -111,17 +116,17 @@ void wireConfig() {
         strcpy(config.mqtt_pwd, mqtt_pwd.c_str());
     }
 
-    Serial.println("       config host: [" + String(config.hostname) + "] stored: " + (config.hostname_flag == 9 ? "true" : "false"));
-    Serial.println("       config ssid: [" + String(config.ssid) + "] stored: " + (config.ssid_flag == 9 ? "true" : "false"));
-    Serial.println("   config ssid pwd: [" + String(config.ssid_pwd) + "] stored: " + (config.ssid_pwd_flag == 9 ? "true\n" : "false\n"));
-    Serial.println("config mqtt server: [" + String(config.mqtt_server) + "] stored: " + (config.mqtt_server_flag == 9 ? "true" : "false"));
-    Serial.println("  config mqtt user: [" + String(config.mqtt_user) + "] stored: " + (config.mqtt_user_flag == 9 ? "true" : "false"));
-    Serial.println("   config mqtt pwd: [" + String(config.mqtt_pwd) + "] stored: " + (config.mqtt_pwd_flag == 9 ? "true\n" : "false\n"));
+    LOG.println("       config host: [" + String(config.hostname) + "] stored: " + (config.hostname_flag == 9 ? "true" : "false"));
+    LOG.println("       config ssid: [" + String(config.ssid) + "] stored: " + (config.ssid_flag == 9 ? "true" : "false"));
+    LOG.println("   config ssid pwd: [" + String(config.ssid_pwd) + "] stored: " + (config.ssid_pwd_flag == 9 ? "true\n" : "false\n"));
+    LOG.println("config mqtt server: [" + String(config.mqtt_server) + "] stored: " + (config.mqtt_server_flag == 9 ? "true" : "false"));
+    LOG.println("  config mqtt user: [" + String(config.mqtt_user) + "] stored: " + (config.mqtt_user_flag == 9 ? "true" : "false"));
+    LOG.println("   config mqtt pwd: [" + String(config.mqtt_pwd) + "] stored: " + (config.mqtt_pwd_flag == 9 ? "true\n" : "false\n"));
 }
 
 void onOTAStart() {
     // Log when OTA has started
-    Serial.println("OTA update started!");
+    LOG.println("OTA update started!");
     // <Add your own code here>
 }
 
@@ -129,17 +134,17 @@ void onOTAProgress(size_t current, size_t final) {
     // Log every 1 second
     if (millis() - ota_progress_millis > 1000) {
         ota_progress_millis = millis();
-        Serial.printf("OTA Progress Current: %u bytes, Final: %u bytes\n", current, final);
+        LOG.printf("OTA Progress Current: %u bytes, Final: %u bytes\n", current, final);
     }
 }
 
 void onOTAEnd(bool success) {
     // Log when OTA has finished
     if (success) {
-        Serial.println("OTA update finished successfully!");
+        LOG.println("OTA update finished successfully!");
         ota_needs_reboot = true;
     } else {
-        Serial.println("There was an error during OTA update!");
+        LOG.println("There was an error during OTA update!");
     }
 }
 
@@ -224,27 +229,27 @@ void wireArduinoOTA(const char* hostname) {
                     type = "filesystem";
 
                 // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-                Serial.println("OTA triggered for updating " + type);
+                LOG.println("OTA triggered for updating " + type);
             })
         .onEnd([]()
             {
-                Serial.println("\nEnd");
+                LOG.println("\nEnd");
             })
                 .onProgress([](unsigned int progress, unsigned int total)
                     {
-                        Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+                        LOG.printf("Progress: %u%%\r", (progress / (total / 100)));
                     })
                 .onError([](ota_error_t error)
                     {
-                        Serial.printf("Error[%u]: ", error);
-                        if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-                        else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-                        else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-                        else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-                        else if (error == OTA_END_ERROR) Serial.println("End Failed");
+                        LOG.printf("Error[%u]: ", error);
+                        if (error == OTA_AUTH_ERROR) LOG.println("Auth Failed");
+                        else if (error == OTA_BEGIN_ERROR) LOG.println("Begin Failed");
+                        else if (error == OTA_CONNECT_ERROR) LOG.println("Connect Failed");
+                        else if (error == OTA_RECEIVE_ERROR) LOG.println("Receive Failed");
+                        else if (error == OTA_END_ERROR) LOG.println("End Failed");
                     });
                     ArduinoOTA.begin();
-                    Serial.println("ArduinoOTA started");
+                    LOG.println("ArduinoOTA started");
 }
 
 void wireWebServerAndPaths() {
@@ -252,53 +257,53 @@ void wireWebServerAndPaths() {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             request->redirect("/index.html");
-            Serial.println(request->url() + " handled");
+            LOG.println(request->url() + " handled");
         });
 
     // define setup document
     server.on("/setup", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             request->send(LittleFS, "/setup.template.html", String(), false, template_processor);
-            Serial.println(request->url() + " handled");
+            LOG.println(request->url() + " handled");
         });
 
     // captive portal
     server.on("/hotspot-detect.html", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             request->send(LittleFS, "/index.html", "text/html");
-            Serial.println(request->url() + " handled");
+            LOG.println(request->url() + " handled");
         });
     server.on("/library/test/success.html", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             request->send(LittleFS, "/index.html", "text/html");
-            Serial.println(request->url() + " handled");
+            LOG.println(request->url() + " handled");
         });
     server.on("/generate_204", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             request->send(LittleFS, "/index.html", "text/html");
-            Serial.println(request->url() + " handled");
+            LOG.println(request->url() + " handled");
         });
     server.on("/gen_204", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             request->send(LittleFS, "/index.html", "text/html");
-            Serial.println(request->url() + " handled");
+            LOG.println(request->url() + " handled");
         });
     server.on("/ncsi.txt", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             request->send(LittleFS, "/index.html", "text/html");
-            Serial.println(request->url() + " handled");
+            LOG.println(request->url() + " handled");
         });
     server.on("/check_network_status.txt", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             request->send(LittleFS, "/index.html", "text/html");
-            Serial.println(request->url() + " handled");
+            LOG.println(request->url() + " handled");
         });
 
     // request reboot
     server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             request->redirect("/setup");
-            Serial.println(request->url() + " handled");
+            LOG.println(request->url() + " handled");
             ota_needs_reboot = true;
         });
 
@@ -352,7 +357,7 @@ void wireWebServerAndPaths() {
                 EEPROM.end();
             }
             request->redirect("/setup");
-            Serial.println(request->url() + " handled");
+            LOG.println(request->url() + " handled");
         });
 
     // wipe config
@@ -380,7 +385,7 @@ void wireWebServerAndPaths() {
             EEPROM.end();
 
             request->send(200, "text/plain", "Settings Wiped!");
-            Serial.println(request->url() + " handled");
+            LOG.println(request->url() + " handled");
         });
 
     // 404 (includes file handling)
@@ -396,10 +401,14 @@ void wireWebServerAndPaths() {
                     response->addHeader("Cache-Control", "no-store");
                 }
                 request->send(response);
-                Serial.println(request->url() + " handled");
+                LOG.println(request->url() + " handled");
             } else {
                 request->send(404, "text/plain", request->url() + " Not found!");
-                Serial.println(request->url() + " Not found!");
+                LOG.println(request->url() + " Not found!");
             }
         });
+
+    // begin the web server
+    server.begin();
+    LOG.println("HTTP server started");
 }

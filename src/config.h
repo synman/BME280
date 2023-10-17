@@ -21,4 +21,22 @@ typedef struct config_type {
     char mqtt_pwd[MQTT_PASSWD_LEN];
 } CONFIG_TYPE;
 
+typedef struct samples_type {
+    float temperature;
+    float humidity;
+    float altitude;
+    float pressure;
+    float high_temperature;
+    float high_humidity;
+    float high_altitude;
+    float high_pressure;
+    float low_temperature;
+    float low_humidity;
+    float low_altitude;
+    float low_pressure;
+    unsigned short sample_count;
+    unsigned long last_update = -5001;
+} SAMPLES_TYPE;
+
 CONFIG_TYPE config;
+SAMPLES_TYPE samples;
