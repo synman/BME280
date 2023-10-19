@@ -10,17 +10,17 @@
         <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
         <meta name="msapplication-TileColor" content="#da532c">
         <meta name="theme-color" content="#ffffff">
-        <meta name='viewport' content='width=device-width, initial-scale=1'>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>BME280 Publisher Setup</title>
         <style>
             body {
                 text-align: center;
-                font-family: 'Trebuchet MS', Arial;
+                font-family: "Trebuchet MS", Arial;
             }
             .input_field {
                 padding:5px;
                 font-size:12px;
-                font-family: 'Trebuchet MS', Arial;
+                font-family: "Trebuchet MS", Arial;
                 width: 150px;
             }
             table {
@@ -53,34 +53,46 @@
             </tr>
             <tr>
                 <td>Hostname</td>
-                <td><input class="input_field" id='hostname' type='text' value='%hostname%'/></td>
+                <td><input class="input_field" id="hostname" type="text" value="%hostname%"/></td>
             </tr>
+            <tr><td colspan=2><hr></td></tr>
             <tr>
                 <td>SSID</td>
-                <td><input class="input_field" id='ssid' type='text' value='%ssid%'/></td>
+                <td><input class="input_field" id="ssid" type="text" value="%ssid%"/></td>
             </tr>
             <tr>
                 <td>SSID Password</td>
-                <td><input class="input_field" id='ssid_pwd' type='password' value='%ssid_pwd%'/></td>
+                <td><input class="input_field" id="ssid_pwd" type="password" value="%ssid_pwd%"/></td>
             </tr>
+            <tr><td colspan=2><hr></td></tr>
             <tr>
                 <td>MQTT Server</td>
-                <td><input class="input_field" id='mqtt_server' type='text' value='%mqtt_server%'/></td>
+                <td><input class="input_field" id="mqtt_server" type="text" value="%mqtt_server%"/></td>
             </tr>
             <tr>
                 <td>MQTT User</td>
-                <td><input class="input_field" id='mqtt_user' type='text' value='%mqtt_user%'/></td>
+                <td><input class="input_field" id="mqtt_user" type="text" value="%mqtt_user%"/></td>
             </tr>
             <tr>
                 <td>MQTT Password</td>
-                <td><input class="input_field" id='mqtt_pwd' type='password' value='%mqtt_pwd%'/></td>
+                <td><input class="input_field" id="mqtt_pwd" type="password" value="%mqtt_pwd%"/></td>
             </tr>
+            <tr><td colspan=2><hr></td></tr>
+            <tr>
+                <td>Samples Per Publish</td>
+                <td><input class="input_field" id="samples_per_publish" type="number" value="%samples_per_publish%"/></td>
+            </tr>
+            <tr>
+                <td>Publish Interval (ms)</td>
+                <td><input class="input_field" id="publish_interval" type="number" value="%publish_interval%"/></td>
+            </tr>
+            <tr><td colspan=2><hr></td></tr>
             <tr height="50px">
                 <td colspan="2">
-                    <input type='submit' onclick='save()' value='Save'/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                    <input type='submit' onclick='reboot()' value='Reboot'/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                    <input type='submit' onclick='ota()' value="OTA">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                    <input type='submit' onclick='sensors()' value="Sensors">
+                    <input type="submit" onclick="save()" value="Save"/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                    <input type="submit" onclick="reboot()" value="Reboot"/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                    <input type="submit" onclick="ota()" value="OTA">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                    <input type="submit" onclick="sensors()" value="Sensors">
             </tr>
         </table>
         <br>
@@ -88,10 +100,22 @@
         <small>timestamp: %timestamp%</small>
     </body>
 
-	<script language='javascript'>
-        function save() { window.location.href=location.protocol + '//' + location.host + '/save/?hostname=' + hostname.value + '&ssid=' + ssid.value + '&ssid_pwd=' + ssid_pwd.value + "&mqtt_server=" + mqtt_server.value + "&mqtt_user=" + mqtt_user.value + "&mqtt_pwd=" + mqtt_pwd.value; }
-        function reboot() { window.location.href=location.protocol + '//' + location.host + '/reboot'; }
-        function ota() { window.location.href=location.protocol + '//' + location.host + '/update'; }
-        function sensors() { window.location.href=location.protocol + '//' + location.host + '/'; }
+	<script language="javascript">
+        function save() { 
+            window.location.href=location.protocol + "//" + 
+                                 location.host + "/save/?hostname=" + 
+                                 hostname.value + "&ssid=" + 
+                                 ssid.value + "&ssid_pwd=" +
+                                 ssid_pwd.value + "&mqtt_server=" + 
+                                 mqtt_server.value + "&mqtt_user=" +
+                                 mqtt_user.value + "&mqtt_pwd=" + 
+                                 mqtt_pwd.value + "&samples_per_publish=" +
+                                 samples_per_publish.value + "&publish_interval=" +
+                                 publish_interval.value;
+        }
+        
+        function reboot() { window.location.href=location.protocol + "//" + location.host + "/reboot"; }
+        function ota() { window.location.href=location.protocol + "//" + location.host + "/update"; }
+        function sensors() { window.location.href=location.protocol + "//" + location.host + "/"; }
 	</script>
 </html>

@@ -1,28 +1,4 @@
-#include <Arduino.h>
-#include <ArduinoHA.h>
-#include <ArduinoOTA.h>
-#include "time.h"
-
-#include <Wire.h>
-#include <SPI.h>
-#include <Adafruit_BME280.h>
-#include <WiFi.h>
-#include <DNSServer.h>
-#include <EEPROM.h>
-#include "LittleFS.h"
-
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-#include <ElegantOTA.h>
-
-#include <TelnetSpy.h>
-
 #include "config.h"
-
-// LED is connected to GPIO2 on this board
-#define INIT_LED { pinMode(2, OUTPUT); digitalWrite(2, LOW); }
-#define LED_ON   { digitalWrite(2, HIGH); }
-#define LED_OFF  { digitalWrite(2, LOW); }
 
 void blink() {
     LED_ON;
@@ -34,35 +10,6 @@ void blink() {
     LED_OFF;
 }
 
-#define LOG SerialAndTelnet
-TelnetSpy SerialAndTelnet;
-
-Adafruit_BME280 bme; // use I2C interface
-Adafruit_Sensor* bme_temp = bme.getTemperatureSensor();
-Adafruit_Sensor* bme_pressure = bme.getPressureSensor();
-Adafruit_Sensor* bme_humidity = bme.getHumiditySensor();
-
-#define SEALEVELPRESSURE_HPA (1013.25)
-#define HPA_TO_INHG (0.02952998057228486)
-
-String hostname = "bme280-env-sensor";
-String ssid = "";
-String ssid_pwd = "";
-String mqtt_server = "";
-String mqtt_user = "";
-String mqtt_pwd = "";
-
-String ap_name = hostname;
-WiFiMode_t wifimode = WIFI_AP;
-char buf[255];
-
-bool ota_needs_reboot = false;
-unsigned long ota_progress_millis = 0;
-struct tm timeinfo;
-
-// Set web server port number to 80
-AsyncWebServer server(80);
-
 void wireConfig() {
     // configuration storage
     EEPROM.begin(EEPROM_SIZE);
@@ -73,55 +20,33 @@ void wireConfig() {
     EEPROM.commit();
     EEPROM.end();
 
-    if (config.hostname_flag == 9) {
-        sprintf(buf, "config host: %s", config.hostname);
-        hostname = config.hostname;
-    } else {
-        strcpy(config.hostname, hostname.c_str());
+    if (String(config.hostname).length() < 1) {
+        strcpy(config.hostname, DEFAULT_HOSTNAME);
     }
 
     if (config.ssid_flag == 9) {
-        sprintf(buf, "config ssid: %s", config.ssid);
-        ssid = config.ssid;
-        wifimode = WIFI_STA;
+        if (String(config.ssid).length() > 0) wifimode = WIFI_STA;
     } else {
-        strcpy(config.ssid, ssid.c_str());
+        strcpy(config.ssid, "");
     }
 
-    if (config.ssid_pwd_flag == 9) {
-        sprintf(buf, "config ssid pwd: %s", config.ssid_pwd);
-        ssid_pwd = config.ssid_pwd;
-    } else {
-        strcpy(config.ssid_pwd, ssid_pwd.c_str());
-    }
-
-    if (config.mqtt_server_flag == 9) {
-        sprintf(buf, "config mqtt server: %s", config.mqtt_server);
-        mqtt_server = config.mqtt_server;
-    } else {
-        strcpy(config.mqtt_server, mqtt_server.c_str());
-    }
-
-    if (config.mqtt_user_flag == 9) {
-        sprintf(buf, "config mqtt user: %s", config.mqtt_user);
-        mqtt_user = config.mqtt_user;
-    } else {
-        strcpy(config.mqtt_user, mqtt_user.c_str());
-    }
-
-    if (config.mqtt_pwd_flag == 9) {
-        sprintf(buf, "config mqtt pwd: %s", config.mqtt_pwd);
-        mqtt_pwd = config.mqtt_pwd;
-    } else {
-        strcpy(config.mqtt_pwd, mqtt_pwd.c_str());
-    }
-
-    LOG.println("       config host: [" + String(config.hostname) + "] stored: " + (config.hostname_flag == 9 ? "true" : "false"));
-    LOG.println("       config ssid: [" + String(config.ssid) + "] stored: " + (config.ssid_flag == 9 ? "true" : "false"));
-    LOG.println("   config ssid pwd: [" + String(config.ssid_pwd) + "] stored: " + (config.ssid_pwd_flag == 9 ? "true\n" : "false\n"));
-    LOG.println("config mqtt server: [" + String(config.mqtt_server) + "] stored: " + (config.mqtt_server_flag == 9 ? "true" : "false"));
-    LOG.println("  config mqtt user: [" + String(config.mqtt_user) + "] stored: " + (config.mqtt_user_flag == 9 ? "true" : "false"));
-    LOG.println("   config mqtt pwd: [" + String(config.mqtt_pwd) + "] stored: " + (config.mqtt_pwd_flag == 9 ? "true\n" : "false\n"));
+    if (config.ssid_pwd_flag != 9) strcpy(config.ssid_pwd, "");
+    if (config.mqtt_server_flag != 9) strcpy(config.mqtt_server, "");
+    if (config.mqtt_user_flag != 9) strcpy(config.mqtt_user, "");
+    if (config.mqtt_pwd_flag != 9) strcpy(config.mqtt_pwd, "");
+    if (config.samples_per_publish_flag != 9) config.samples_per_publish = 3;
+    if (config.publish_interval_flag != 9) config.publish_interval = 60000;
+    
+    LOG.println("        EEPROM size: [" + String(EEPROM_SIZE)+ "]");
+    LOG.println("        config size: [" + String(sizeof(config))+ "]\n");
+    LOG.println("        config host: [" + String(config.hostname) + "] stored: " + (config.hostname_flag == 9 ? "true" : "false"));
+    LOG.println("        config ssid: [" + String(config.ssid) + "] stored: " + (config.ssid_flag == 9 ? "true" : "false"));
+    LOG.println("    config ssid pwd: [" + String(config.ssid_pwd) + "] stored: " + (config.ssid_pwd_flag == 9 ? "true\n" : "false\n"));
+    LOG.println(" config mqtt server: [" + String(config.mqtt_server) + "] stored: " + (config.mqtt_server_flag == 9 ? "true" : "false"));
+    LOG.println("   config mqtt user: [" + String(config.mqtt_user) + "] stored: " + (config.mqtt_user_flag == 9 ? "true" : "false"));
+    LOG.println("    config mqtt pwd: [" + String(config.mqtt_pwd) + "] stored: " + (config.mqtt_pwd_flag == 9 ? "true\n" : "false\n"));
+    LOG.println(" config num samples: [" + String(config.samples_per_publish) + "] stored: " + (config.samples_per_publish_flag == 9 ? "true" : "false"));
+    LOG.println("config pub interval: [" + String(config.publish_interval) + "] stored: " + (config.publish_interval_flag == 9 ? "true\n" : "false\n"));
 }
 
 void onOTAStart() {
@@ -151,18 +76,14 @@ void onOTAEnd(bool success) {
 String template_processor(const String& var) {
     char result[255];
 
-    if (var == "hostname")
-        return config.hostname;
-    if (var == "ssid")
-        return config.ssid;
-    if (var == "ssid_pwd")
-        return config.ssid_pwd;
-    if (var == "mqtt_server")
-        return config.mqtt_server;
-    if (var == "mqtt_user")
-        return config.mqtt_user;
-    if (var == "mqtt_pwd")
-        return config.mqtt_pwd;
+    if (var == "hostname") return config.hostname;
+    if (var == "ssid") return config.ssid;
+    if (var == "ssid_pwd") return config.ssid_pwd;
+    if (var == "mqtt_server") return config.mqtt_server;
+    if (var == "mqtt_user") return config.mqtt_user;
+    if (var == "mqtt_pwd") return config.mqtt_pwd;
+    if (var == "samples_per_publish") return String(config.samples_per_publish);
+    if (var == "publish_interval") return String(config.publish_interval);
 
     if (var == "timestamp") {
         if (getLocalTime(&timeinfo)) {
@@ -171,7 +92,6 @@ String template_processor(const String& var) {
             return "Failed to obtain time";
         }
     }
-
     return result;
 }
 
@@ -182,6 +102,10 @@ void updateIndexTemplate(String temperature, String humidity, String altitude, S
     if (_template) {
         String html = _template.readString();
         _template.close();
+
+        while (html.indexOf("{publish_interval}", 0) != -1) {
+            html.replace("{publish_interval}", String(config.publish_interval / 1000));
+        }
 
         while (html.indexOf("{temperature}", 0) != -1) {
             html.replace("{temperature}", temperature);
@@ -314,52 +238,68 @@ void wireWebServerAndPaths() {
     // save config
     server.on("/save", HTTP_GET, [](AsyncWebServerRequest* request)
         {
-            if (request->hasParam("ssid")) {
-                ssid = request->getParam("ssid")->value();
-                memset(config.ssid, '\0', WIFI_SSID_LEN);
-                ssid.toCharArray(config.ssid, WIFI_SSID_LEN);
-                config.ssid_flag = 9;
-            }
             if (request->hasParam("hostname")) {
-                hostname = request->getParam("hostname")->value();
+                String hostname = request->getParam("hostname")->value();
+                if (hostname.length() < 1) hostname = DEFAULT_HOSTNAME;
                 memset(config.hostname, '\0', HOSTNAME_LEN);
                 hostname.toCharArray(config.hostname, HOSTNAME_LEN);
                 config.hostname_flag = 9;
             }
+            if (request->hasParam("ssid")) {
+                const String ssid = request->getParam("ssid")->value();
+                memset(config.ssid, '\0', WIFI_SSID_LEN);
+                ssid.toCharArray(config.ssid, WIFI_SSID_LEN);
+                config.ssid_flag = 9;
+            }
             if (request->hasParam("ssid_pwd")) {
-                ssid_pwd = request->getParam("ssid_pwd")->value();
+                const String ssid_pwd = request->getParam("ssid_pwd")->value();
                 memset(config.ssid_pwd, '\0', WIFI_PASSWD_LEN);
                 ssid_pwd.toCharArray(config.ssid_pwd, WIFI_PASSWD_LEN);
                 config.ssid_pwd_flag = 9;
             }
             if (request->hasParam("mqtt_server")) {
-                mqtt_server = request->getParam("mqtt_server")->value();
+                const String mqtt_server = request->getParam("mqtt_server")->value();
                 memset(config.mqtt_server, '\0', MQTT_SERVER_LEN);
                 mqtt_server.toCharArray(config.mqtt_server, MQTT_SERVER_LEN);
                 config.mqtt_server_flag = 9;
             }
             if (request->hasParam("mqtt_user")) {
-                mqtt_user = request->getParam("mqtt_user")->value();
+                const String mqtt_user = request->getParam("mqtt_user")->value();
                 memset(config.mqtt_user, '\0', MQTT_USER_LEN);
                 mqtt_user.toCharArray(config.mqtt_user, MQTT_USER_LEN);
                 config.mqtt_user_flag = 9;
             }
             if (request->hasParam("mqtt_pwd")) {
-                mqtt_pwd = request->getParam("mqtt_pwd")->value();
+                const String mqtt_pwd = request->getParam("mqtt_pwd")->value();
                 memset(config.mqtt_pwd, '\0', MQTT_PASSWD_LEN);
                 mqtt_pwd.toCharArray(config.mqtt_pwd, MQTT_PASSWD_LEN);
                 config.mqtt_pwd_flag = 9;
             }
-            if (config.hostname_flag == 9 || config.ssid_flag == 9 || config.ssid_pwd_flag == 9 ||
-                config.mqtt_server_flag == 9 || config.mqtt_user_flag == 9 || config.mqtt_pwd_flag == 9) {
-                EEPROM.begin(EEPROM_SIZE);
-                uint8_t* p = (uint8_t*)(&config);
-                for (unsigned char i = 0; i < sizeof(config); i++) {
-                    EEPROM.write(i, *(p + i));
+
+            if (request->hasParam("samples_per_publish")) {
+                const int samples = request->getParam("samples_per_publish")->value().toInt();
+                if (samples >= MIN_SAMPLES_PER_PUBLISH) {
+                    config.samples_per_publish = samples;
+                    config.samples_per_publish_flag = 9;
                 }
-                EEPROM.commit();
-                EEPROM.end();
             }
+
+            if (request->hasParam("publish_interval")) {
+                const unsigned long interval = strtoul(request->getParam("publish_interval")->value().c_str(), NULL, 10);
+                if (interval >= MIN_PUBLISH_INTERVAL) {
+                    config.publish_interval = interval;
+                    config.publish_interval_flag = 9;
+                }
+            }
+
+            EEPROM.begin(EEPROM_SIZE);
+            uint8_t* p = (uint8_t*)(&config);
+            for (int i = 0; i < sizeof(config); i++) {
+                EEPROM.write(i, *(p + i));
+            }
+            EEPROM.commit();
+            EEPROM.end();
+
             request->redirect("/setup");
             LOG.println(request->url() + " handled");
         });
@@ -380,9 +320,14 @@ void wireWebServerAndPaths() {
             config.mqtt_pwd_flag = 0;
             memset(config.mqtt_pwd, '\0', MQTT_PASSWD_LEN);
 
+            config.samples_per_publish_flag = 0;
+            config.samples_per_publish = 3;
+            config.publish_interval_flag = 0;
+            config.publish_interval = 60000;
+
             EEPROM.begin(EEPROM_SIZE);
             uint8_t* p = (uint8_t*)(&config);
-            for (unsigned char i = 0; i < sizeof(config); i++) {
+            for (int i = 0; i < sizeof(config); i++) {
                 EEPROM.write(i, *(p + i));
             }
             EEPROM.commit();
@@ -415,4 +360,18 @@ void wireWebServerAndPaths() {
     // begin the web server
     server.begin();
     LOG.println("HTTP server started");
+}
+
+bool isSampleValid(float value) {
+    return value < SHRT_MAX && value > SHRT_MIN;
+}
+
+String toFloatStr(float value, short decimal_places) {
+    char buf[20];
+    String fmt;
+
+    fmt = "%." + String(decimal_places) + "f";
+    sprintf(buf, fmt.c_str(), value);
+
+    return String(buf);
 }
