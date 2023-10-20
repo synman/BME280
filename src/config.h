@@ -33,11 +33,15 @@
 #define MQTT_PASSWD_LEN 32
 
 #define DEFAULT_HOSTNAME            "bme280-env-sensor"
+
 #define DEFAULT_SAMPLES_PER_PUBLISH 3
 #define DEFAULT_PUBLISH_INTERVAL    60000
 
 #define MIN_SAMPLES_PER_PUBLISH     3
 #define MIN_PUBLISH_INTERVAL        1000
+
+#define CFG_NOT_SET                 0x0
+#define CFG_SET                     0x9
 
 typedef unsigned char tiny_int;
 
@@ -99,6 +103,9 @@ char buf[255];
 bool ota_needs_reboot = false;
 unsigned long ota_progress_millis = 0;
 struct tm timeinfo;
+
+bool setup_needs_update = false;
+bool ap_mode_activity = false;
 
 // Set web server port number to 80
 AsyncWebServer server(80);

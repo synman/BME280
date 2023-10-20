@@ -116,7 +116,7 @@ void setup() {
   if (!LittleFS.begin()) {
     LOG.println("An Error has occurred while mounting LittleFS");
   } else {
-    LOG.println("LittleFS filesystem started");
+    LOG.println("LittleFS started");
   }
 
   // set device details
@@ -168,6 +168,9 @@ void setup() {
   rssiSensor->setName("rssi");
   rssiSensor->setUnitOfMeasurement("dB");
 
+  LOG.println("Rebuilding /setup.html");
+  updateHtmlTemplate("/setup.template.html");
+
   // wire up http server and paths
   wireWebServerAndPaths();
 
@@ -196,6 +199,14 @@ void loop() {
 
   // handle TelnetSpy
   SerialAndTelnet.handle();
+
+  // rebuild setup.html on main thread
+  if (setup_needs_update) {
+    LOG.println("----- rebuilding /setup.html");
+    updateHtmlTemplate("/setup.template.html");
+    LOG.println("-----  /setup.html rebuilt");
+    setup_needs_update = false;
+  }
 
   const unsigned long sysmillis = millis();
 
@@ -258,18 +269,7 @@ void loop() {
 
     if (samples.sample_count >= config.samples_per_publish) {
       // publish our normalized values 
-        String timestamp;
-
-        if (!getLocalTime(&timeinfo)) {
-          timestamp = "Failed to obtain time";
-        } else {
-          sprintf(buf, "%4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-          timestamp = String(buf);
-        }
-
         LOG.println("\nNormalized Result (Published)");
-        LOG.print("Timestamp   = ");
-        LOG.println(timestamp);
 
         // remove highest and lowest values (outliers)
         samples.temperature = samples.temperature - (samples.low_temperature + samples.high_temperature);
@@ -318,11 +318,12 @@ void loop() {
         if (isSampleValid(finalPres)) presSensor->setValue(finalPres);
         if (isSampleValid(finalRssi)) rssiSensor->setValue(finalRssi);
 
-        updateIndexTemplate(toFloatStr(finalTemp, 3), 
+        updateHtmlTemplate("/index.template.html", 
+                            toFloatStr(finalTemp, 3), 
                             toFloatStr(finalHumid, 3), 
                             toFloatStr(finalAlt, 3), 
                             toFloatStr(finalPres, 3), 
-                            String(finalRssi), timestamp);
+                            String(finalRssi));
 
         // reset our samples structure
         samples.temperature = 0L;
@@ -352,6 +353,11 @@ void loop() {
 
   // it doesn't seem right to never sleep so we'll delay for 1ms
   delay(1);
+
+  // reboot if in AP mode and no activity for 5 minutes
+  if (wifimode == WIFI_AP && !ap_mode_activity && millis() >= 300000UL) {
+    ota_needs_reboot = true;
+  }
 
   if (ota_needs_reboot) {
     ElegantOTA.loop();
