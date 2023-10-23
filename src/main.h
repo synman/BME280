@@ -1,3 +1,10 @@
+/***************************************************************************
+ Copyright © 2023 Shell M. Shrader <shell at shellware dot com
+ ---------------------------------------------------------------------------
+This work is free. You can redistribute it and/or modify it under the
+terms of the Do What The Fuck You Want To Public License, Version 2,
+as published by Sam Hocevar. See the COPYING file for more details.
+****************************************************************************/
 #include "config.h"
 
 void blink() {
@@ -27,13 +34,13 @@ void wireConfig() {
     if (config.ssid_flag == CFG_SET) {
         if (String(config.ssid).length() > 0) wifimode = WIFI_STA;
     } else {
-        memset(config.ssid, '\0', WIFI_SSID_LEN);
+        memset(config.ssid, CFG_NOT_SET, WIFI_SSID_LEN);
     }
 
-    if (config.ssid_pwd_flag != CFG_SET) memset(config.ssid, '\0', WIFI_PASSWD_LEN);
-    if (config.mqtt_server_flag != CFG_SET) memset(config.mqtt_server, '\0', MQTT_SERVER_LEN);
-    if (config.mqtt_user_flag != CFG_SET) memset(config.ssid, '\0', MQTT_USER_LEN);
-    if (config.mqtt_pwd_flag != CFG_SET) memset(config.ssid, '\0', MQTT_PASSWD_LEN);
+    if (config.ssid_pwd_flag != CFG_SET) memset(config.ssid_pwd, CFG_NOT_SET, WIFI_PASSWD_LEN);
+    if (config.mqtt_server_flag != CFG_SET) memset(config.mqtt_server, CFG_NOT_SET, MQTT_SERVER_LEN);
+    if (config.mqtt_user_flag != CFG_SET) memset(config.mqtt_user, CFG_NOT_SET, MQTT_USER_LEN);
+    if (config.mqtt_pwd_flag != CFG_SET) memset(config.mqtt_pwd, CFG_NOT_SET, MQTT_PASSWD_LEN);
     if (config.samples_per_publish_flag != CFG_SET) config.samples_per_publish = DEFAULT_SAMPLES_PER_PUBLISH;
     if (config.publish_interval_flag != CFG_SET) config.publish_interval = DEFAULT_PUBLISH_INTERVAL;
     
@@ -193,37 +200,41 @@ void updateHtmlTemplate(String template_filename, String temperature = "", Strin
 
 void wireArduinoOTA(const char* hostname) {
     ArduinoOTA.setHostname(hostname);
-    ArduinoOTA
-        .onStart([]()
-            {
-                String type;
-                if (ArduinoOTA.getCommand() == U_FLASH)
-                    type = "sketch";
-                else // U_SPIFFS
-                    type = "filesystem";
 
-                // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-                LOG.println("OTA triggered for updating " + type);
-            })
-        .onEnd([]()
-            {
-                LOG.println("\nEnd");
-            })
-                .onProgress([](unsigned int progress, unsigned int total)
-                    {
-                        LOG.printf("Progress: %u%%\r", (progress / (total / 100)));
-                    })
-                .onError([](ota_error_t error)
-                    {
-                        LOG.printf("Error[%u]: ", error);
-                        if (error == OTA_AUTH_ERROR) LOG.println("Auth Failed");
-                        else if (error == OTA_BEGIN_ERROR) LOG.println("Begin Failed");
-                        else if (error == OTA_CONNECT_ERROR) LOG.println("Connect Failed");
-                        else if (error == OTA_RECEIVE_ERROR) LOG.println("Receive Failed");
-                        else if (error == OTA_END_ERROR) LOG.println("End Failed");
-                    });
-                    ArduinoOTA.begin();
-                    LOG.println("ArduinoOTA started");
+    ArduinoOTA.onStart([]()
+    {
+        String type;
+        if (ArduinoOTA.getCommand() == U_FLASH)
+            type = "sketch";
+        else // U_SPIFFS
+            type = "filesystem";
+
+        // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+        LOG.println("OTA triggered for updating " + type);
+    });
+
+    ArduinoOTA.onEnd([]()
+    {
+        LOG.println("\nEnd");
+    });
+
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total)
+    {
+        LOG.printf("Progress: %u%%\r", (progress / (total / 100)));
+    });
+
+    ArduinoOTA.onError([](ota_error_t error)
+    {
+        LOG.printf("Error[%u]: ", error);
+        if (error == OTA_AUTH_ERROR) LOG.println("Auth Failed");
+        else if (error == OTA_BEGIN_ERROR) LOG.println("Begin Failed");
+        else if (error == OTA_CONNECT_ERROR) LOG.println("Connect Failed");
+        else if (error == OTA_RECEIVE_ERROR) LOG.println("Receive Failed");
+        else if (error == OTA_END_ERROR) LOG.println("End Failed");
+    });
+
+    ArduinoOTA.begin();
+    LOG.println("ArduinoOTA started");
 }
 
 void wireWebServerAndPaths() {
@@ -292,62 +303,97 @@ void wireWebServerAndPaths() {
     server.on("/save", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             if (request->hasParam("hostname")) {
+                memset(config.hostname, CFG_NOT_SET, HOSTNAME_LEN);
                 String hostname = request->getParam("hostname")->value();
-                if (hostname.length() < 1) hostname = DEFAULT_HOSTNAME;
-                memset(config.hostname, '\0', HOSTNAME_LEN);
+                if (hostname.length() > 0) {                    
+                    config.hostname_flag = CFG_SET;
+                } else {
+                    config.hostname_flag = CFG_NOT_SET;
+                    hostname = DEFAULT_HOSTNAME;
+                }
                 hostname.toCharArray(config.hostname, HOSTNAME_LEN);
-                config.hostname_flag = CFG_SET;
             }
+
             if (request->hasParam("ssid")) {
                 const String ssid = request->getParam("ssid")->value();
-                memset(config.ssid, '\0', WIFI_SSID_LEN);
-                ssid.toCharArray(config.ssid, WIFI_SSID_LEN);
-                config.ssid_flag = CFG_SET;
+                memset(config.ssid, CFG_NOT_SET, WIFI_SSID_LEN);
+                if (ssid.length() > 0) {
+                    ssid.toCharArray(config.ssid, WIFI_SSID_LEN);
+                    config.ssid_flag = CFG_SET;
+                } else {
+                    config.ssid_flag = CFG_NOT_SET;
+                }
             }
+
             if (request->hasParam("ssid_pwd")) {
                 const String ssid_pwd = request->getParam("ssid_pwd")->value();
-                memset(config.ssid_pwd, '\0', WIFI_PASSWD_LEN);
-                ssid_pwd.toCharArray(config.ssid_pwd, WIFI_PASSWD_LEN);
-                config.ssid_pwd_flag = CFG_SET;
+                memset(config.ssid_pwd, CFG_NOT_SET, WIFI_PASSWD_LEN);
+                if (ssid_pwd.length() > 0) {
+                    ssid_pwd.toCharArray(config.ssid_pwd, WIFI_PASSWD_LEN);
+                    config.ssid_pwd_flag = CFG_SET;
+                } else {
+                    config.ssid_pwd_flag = CFG_NOT_SET;
+                }
             }
+
             if (request->hasParam("mqtt_server")) {
                 const String mqtt_server = request->getParam("mqtt_server")->value();
-                memset(config.mqtt_server, '\0', MQTT_SERVER_LEN);
-                mqtt_server.toCharArray(config.mqtt_server, MQTT_SERVER_LEN);
-                config.mqtt_server_flag = CFG_SET;
+                memset(config.mqtt_server, CFG_NOT_SET, MQTT_SERVER_LEN);
+                if (mqtt_server.length() > 0) {
+                    mqtt_server.toCharArray(config.mqtt_server, MQTT_SERVER_LEN);
+                    config.mqtt_server_flag = CFG_SET;
+                } else {
+                    config.mqtt_server_flag = CFG_NOT_SET;
+                }
             }
+
             if (request->hasParam("mqtt_user")) {
                 const String mqtt_user = request->getParam("mqtt_user")->value();
-                memset(config.mqtt_user, '\0', MQTT_USER_LEN);
-                mqtt_user.toCharArray(config.mqtt_user, MQTT_USER_LEN);
-                config.mqtt_user_flag = CFG_SET;
+                memset(config.mqtt_user, CFG_NOT_SET, MQTT_USER_LEN);
+                if (mqtt_user.length() > 0) {
+                    mqtt_user.toCharArray(config.mqtt_user, MQTT_USER_LEN);
+                    config.mqtt_user_flag = CFG_SET;
+                } else {
+                    config.mqtt_user_flag = CFG_NOT_SET;
+                }
             }
+
             if (request->hasParam("mqtt_pwd")) {
                 const String mqtt_pwd = request->getParam("mqtt_pwd")->value();
-                memset(config.mqtt_pwd, '\0', MQTT_PASSWD_LEN);
-                mqtt_pwd.toCharArray(config.mqtt_pwd, MQTT_PASSWD_LEN);
-                config.mqtt_pwd_flag = CFG_SET;
+                memset(config.mqtt_pwd, CFG_NOT_SET, MQTT_PASSWD_LEN);
+                if (mqtt_pwd.length() > 0) {
+                    mqtt_pwd.toCharArray(config.mqtt_pwd, MQTT_PASSWD_LEN);
+                    config.mqtt_pwd_flag = CFG_SET;
+                } else {
+                    config.mqtt_pwd_flag = CFG_NOT_SET;
+                }
             }
 
             if (request->hasParam("samples_per_publish")) {
                 const int samples = request->getParam("samples_per_publish")->value().toInt();
-                if (samples >= MIN_SAMPLES_PER_PUBLISH) {
+                if (samples > MIN_SAMPLES_PER_PUBLISH) {
                     config.samples_per_publish = samples;
                     config.samples_per_publish_flag = CFG_SET;
+                } else {
+                    config.samples_per_publish_flag = CFG_NOT_SET;
+                    config.samples_per_publish = DEFAULT_SAMPLES_PER_PUBLISH;
                 }
             }
 
             if (request->hasParam("publish_interval")) {
                 const unsigned long interval = strtoul(request->getParam("publish_interval")->value().c_str(), NULL, 10);
-                if (interval >= MIN_PUBLISH_INTERVAL) {
+                if (interval > MIN_PUBLISH_INTERVAL && interval != DEFAULT_PUBLISH_INTERVAL) {
                     config.publish_interval = interval;
                     config.publish_interval_flag = CFG_SET;
+                } else {
+                    config.publish_interval_flag = CFG_NOT_SET;
+                    config.publish_interval = DEFAULT_PUBLISH_INTERVAL;
                 }
             }
 
             EEPROM.begin(EEPROM_SIZE);
             uint8_t* p = (uint8_t*)(&config);
-            for (int i = 0; i < sizeof(config); i++) {
+            for (unsigned long i = 0; i < sizeof(config); i++) {
                 EEPROM.write(i, *(p + i));
             }
             EEPROM.commit();
@@ -376,15 +422,15 @@ void wireWebServerAndPaths() {
             config.hostname_flag = CFG_NOT_SET;
             strcpy(config.hostname, DEFAULT_HOSTNAME);
             config.ssid_flag = CFG_NOT_SET;
-            memset(config.ssid, '\0', WIFI_SSID_LEN);
+            memset(config.ssid, CFG_NOT_SET, WIFI_SSID_LEN);
             config.ssid_pwd_flag = CFG_NOT_SET;
-            memset(config.ssid_pwd, '\0', WIFI_PASSWD_LEN);
+            memset(config.ssid_pwd, CFG_NOT_SET, WIFI_PASSWD_LEN);
             config.mqtt_server_flag = CFG_NOT_SET;
-            memset(config.mqtt_server, '\0', MQTT_SERVER_LEN);
+            memset(config.mqtt_server, CFG_NOT_SET, MQTT_SERVER_LEN);
             config.mqtt_user_flag = CFG_NOT_SET;
-            memset(config.mqtt_user, '\0', MQTT_USER_LEN);
+            memset(config.mqtt_user, CFG_NOT_SET, MQTT_USER_LEN);
             config.mqtt_pwd_flag = CFG_NOT_SET;
-            memset(config.mqtt_pwd, '\0', MQTT_PASSWD_LEN);
+            memset(config.mqtt_pwd, CFG_NOT_SET, MQTT_PASSWD_LEN);
 
             config.samples_per_publish_flag = CFG_NOT_SET;
             config.samples_per_publish = DEFAULT_SAMPLES_PER_PUBLISH;
@@ -393,7 +439,7 @@ void wireWebServerAndPaths() {
 
             EEPROM.begin(EEPROM_SIZE);
             uint8_t* p = (uint8_t*)(&config);
-            for (int i = 0; i < sizeof(config); i++) {
+            for (unsigned long i = 0; i < sizeof(config); i++) {
                 EEPROM.write(i, *(p + i));
             }
             EEPROM.commit();

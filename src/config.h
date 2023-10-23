@@ -1,3 +1,10 @@
+/***************************************************************************
+ Copyright © 2023 Shell M. Shrader <shell at shellware dot com
+ ---------------------------------------------------------------------------
+This work is free. You can redistribute it and/or modify it under the
+terms of the Do What The Fuck You Want To Public License, Version 2,
+as published by Sam Hocevar. See the COPYING file for more details.
+****************************************************************************/
 #include <Arduino.h>
 #include <ArduinoHA.h>
 #include <ArduinoOTA.h>
@@ -6,13 +13,25 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <Adafruit_BME280.h>
-#include <WiFi.h>
+
+#ifdef esp32
+    #include <WiFi.h>
+    #include <AsyncTCP.h>
+#else
+    #include <ESP8266Wifi.h>
+    #include <ESPAsyncTCP.h>
+
+    #define FILE_READ "r"
+    #define FILE_WRITE "w"
+#endif
+
 #include <DNSServer.h>
 #include <EEPROM.h>
 #include "LittleFS.h"
 
-#include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+
+// #define ELEGANTOTA_USE_ASYNC_WEBSERVER 1
 #include <ElegantOTA.h>
 
 #include <TelnetSpy.h>

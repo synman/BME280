@@ -49,6 +49,11 @@
         "stdexcept": "cpp",
         "streambuf": "cpp",
         "cinttypes": "cpp",
-        "typeinfo": "cpp"
+        "typeinfo": "cpp",
+        "chrono": "cpp",
+        "compare": "cpp",
+        "ranges": "cpp",
+        "ratio": "cpp",
+        "variant": "cpp"
     }
 }

@@ -1,23 +1,10 @@
 /***************************************************************************
-  This is a library for the BME280 humidity, temperature & pressure sensor
-  This example shows how to take Sensor Events instead of direct readings
-
-  Designed specifically to work with the Adafruit BME280 Breakout
-  ----> http://www.adafruit.com/products/2652
-
-  These sensors use I2C or SPI to communicate, 2 or 4 pins are required
-  to interface.
-
-  Adafruit invests time and resources providing this open source code,
-  please support Adafruit and open-source hardware by purchasing products
-  from Adafruit!
-
-  Written by Limor Fried & Kevin Townsend for Adafruit Industries.
-  BSD license, all text above must be included in any redistribution
-
-  Customizations added by Shell M. Shrader - Oct 15 2023
- ***************************************************************************/
-
+ Copyright © 2023 Shell M. Shrader <shell at shellware dot com
+ ---------------------------------------------------------------------------
+This work is free. You can redistribute it and/or modify it under the
+terms of the Do What The Fuck You Want To Public License, Version 2,
+as published by Sam Hocevar. See the COPYING file for more details.
+****************************************************************************/
 #include "main.h"
 
 void setup() {
@@ -48,7 +35,10 @@ void setup() {
   WiFi.mode(wifimode);
 
   // WiFi.scanNetworks will return the number of networks found
+  uint8_t nothing = 0;
   uint8_t *bestBssid;
+  bestBssid = &nothing;
+
   short bestRssi = SHRT_MIN;
   int n = WiFi.scanNetworks();
 
