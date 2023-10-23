@@ -106,6 +106,8 @@ typedef struct samples_type {
 CONFIG_TYPE config;
 SAMPLES_TYPE samples;
 
+void wipeConfig();
+
 TelnetSpy SerialAndTelnet;
 
 Adafruit_BME280 bme; // use I2C interface

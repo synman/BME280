@@ -29,6 +29,18 @@ void setup() {
   // wire up EEPROM storage and config
   wireConfig();
 
+  // start and mount our littlefs file system
+  if (!LittleFS.begin()) {
+    LOG.println("An Error has occurred while initializing LittleFS\n");
+  } else {
+    FSInfo fs_info;
+    LittleFS.info(fs_info);
+    const size_t fs_size = fs_info.totalBytes / 1000;
+    const size_t fs_used = fs_info.usedBytes / 1000;
+    LOG.println("    Filesystem size: [" + String(fs_size) + "] KB");
+    LOG.println("         Free space: [" + String(fs_size - fs_used) + "] KB\n");
+  }
+
   // Connect to Wi-Fi network with SSID and password
   // or fall back to AP mode
   WiFi.hostname(config.hostname);
@@ -55,14 +67,14 @@ void setup() {
   }
 
   if (wifimode == WIFI_STA && bestRssi != SHRT_MIN) {
-    LOG.print("Connecting to "); LOG.print(config.ssid);
+    LOG.print("Connecting to " + String(config.ssid) + " ");
     WiFi.begin(config.ssid, config.ssid_pwd, 0, bestBssid, true);
     for (tiny_int x = 0; x < 60 && WiFi.status() != WL_CONNECTED; x++) {
       blink();
       LOG.print(".");
     }
 
-    LOG.println("");
+    LOG.println();
 
     if (WiFi.status() == WL_CONNECTED) {
       // initialize time
@@ -102,12 +114,6 @@ void setup() {
   ElegantOTA.onEnd(onOTAEnd);
 
   LOG.println("ElegantOTA started");
-
-  if (!LittleFS.begin()) {
-    LOG.println("An Error has occurred while mounting LittleFS");
-  } else {
-    LOG.println("LittleFS started");
-  }
 
   // set device details
   String uniqueId = String(config.hostname);
@@ -158,8 +164,8 @@ void setup() {
   rssiSensor->setName("rssi");
   rssiSensor->setUnitOfMeasurement("dB");
 
-  LOG.println("Rebuilding /setup.html");
   updateHtmlTemplate("/setup.template.html");
+  LOG.println("Refreshed /setup.html");
 
   // wire up http server and paths
   wireWebServerAndPaths();
@@ -189,6 +195,7 @@ void loop() {
 
   // handle TelnetSpy
   SerialAndTelnet.handle();
+  checkForRemoteCommand();
 
   // rebuild setup.html on main thread
   if (setup_needs_update) {

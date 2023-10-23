@@ -419,31 +419,7 @@ void wireWebServerAndPaths() {
         {
             const boolean reboot = !request->hasParam("noreboot");
 
-            config.hostname_flag = CFG_NOT_SET;
-            strcpy(config.hostname, DEFAULT_HOSTNAME);
-            config.ssid_flag = CFG_NOT_SET;
-            memset(config.ssid, CFG_NOT_SET, WIFI_SSID_LEN);
-            config.ssid_pwd_flag = CFG_NOT_SET;
-            memset(config.ssid_pwd, CFG_NOT_SET, WIFI_PASSWD_LEN);
-            config.mqtt_server_flag = CFG_NOT_SET;
-            memset(config.mqtt_server, CFG_NOT_SET, MQTT_SERVER_LEN);
-            config.mqtt_user_flag = CFG_NOT_SET;
-            memset(config.mqtt_user, CFG_NOT_SET, MQTT_USER_LEN);
-            config.mqtt_pwd_flag = CFG_NOT_SET;
-            memset(config.mqtt_pwd, CFG_NOT_SET, MQTT_PASSWD_LEN);
-
-            config.samples_per_publish_flag = CFG_NOT_SET;
-            config.samples_per_publish = DEFAULT_SAMPLES_PER_PUBLISH;
-            config.publish_interval_flag = CFG_NOT_SET;
-            config.publish_interval = DEFAULT_PUBLISH_INTERVAL;
-
-            EEPROM.begin(EEPROM_SIZE);
-            uint8_t* p = (uint8_t*)(&config);
-            for (unsigned long i = 0; i < sizeof(config); i++) {
-                EEPROM.write(i, *(p + i));
-            }
-            EEPROM.commit();
-            EEPROM.end();
+            wipeConfig();
 
             request->redirect("/index.html");
             LOG.println(request->url() + " handled");
@@ -479,6 +455,36 @@ void wireWebServerAndPaths() {
     LOG.println("HTTP server started");
 }
 
+void wipeConfig() {
+    config.hostname_flag = CFG_NOT_SET;
+    strcpy(config.hostname, DEFAULT_HOSTNAME);
+    config.ssid_flag = CFG_NOT_SET;
+    memset(config.ssid, CFG_NOT_SET, WIFI_SSID_LEN);
+    config.ssid_pwd_flag = CFG_NOT_SET;
+    memset(config.ssid_pwd, CFG_NOT_SET, WIFI_PASSWD_LEN);
+    config.mqtt_server_flag = CFG_NOT_SET;
+    memset(config.mqtt_server, CFG_NOT_SET, MQTT_SERVER_LEN);
+    config.mqtt_user_flag = CFG_NOT_SET;
+    memset(config.mqtt_user, CFG_NOT_SET, MQTT_USER_LEN);
+    config.mqtt_pwd_flag = CFG_NOT_SET;
+    memset(config.mqtt_pwd, CFG_NOT_SET, MQTT_PASSWD_LEN);
+
+    config.samples_per_publish_flag = CFG_NOT_SET;
+    config.samples_per_publish = DEFAULT_SAMPLES_PER_PUBLISH;
+    config.publish_interval_flag = CFG_NOT_SET;
+    config.publish_interval = DEFAULT_PUBLISH_INTERVAL;
+
+    EEPROM.begin(EEPROM_SIZE);
+    uint8_t* p = (uint8_t*)(&config);
+    for (unsigned long i = 0; i < sizeof(config); i++) {
+        EEPROM.write(i, *(p + i));
+    }
+    EEPROM.commit();
+    EEPROM.end();
+
+    LOG.println("\nconfig wiped\n");
+}
+
 bool isSampleValid(float value) {
     return value < SHRT_MAX && value > SHRT_MIN;
 }
@@ -491,4 +497,46 @@ String toFloatStr(float value, short decimal_places) {
     sprintf(buf, fmt.c_str(), value);
 
     return String(buf);
+}
+
+void checkForRemoteCommand() {
+    if (LOG.available() > 0) {
+		char c = LOG.read();
+		switch (c) {
+		case '\r':
+			LOG.println();
+			break;
+		case '\n':
+			break;
+        case 'F':
+            {
+                FSInfo fs_info;
+                LittleFS.info(fs_info);
+                const size_t fs_size = fs_info.totalBytes / 1000;
+                const size_t fs_used = fs_info.usedBytes / 1000;
+                LOG.println("    Filesystem size: [" + String(fs_size) + "] KB");
+                LOG.println("         Free space: [" + String(fs_size - fs_used) + "] KB\n");
+            }
+            break;
+		case 'L':
+            wireConfig();
+            setup_needs_update = true;
+			break;
+		case 'W':
+            wipeConfig();
+			break;
+		case 'X':
+			LOG.println(F("\r\nClosing session..."));
+			SerialAndTelnet.disconnectClient();
+			break;
+		case 'R':
+			LOG.println(F("\r\nsubmitting reboot request..."));
+			ota_needs_reboot = true;
+			break;
+		default:
+			LOG.print("\n\nCommands:\n\nF = Filesystem Info\nL = Reload Config\nW = Wipe Config\nX = Close Session\nR = Reboot ESP\n\n");
+			break;
+		}
+		LOG.flush();
+	}
 }
