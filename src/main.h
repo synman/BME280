@@ -613,9 +613,6 @@ void checkForRemoteCommand() {
 }
 
 float getSeaLevelPressure() {
-    const String observationsUrl = "https://api.weather.gov/stations/" + String(config.nws_station) + "/observations/latest";
-    DynamicJsonDocument doc(8192);
-
     if (config.nws_station_flag == CFG_NOT_SET) {
         LOG.println("\nNWS Station is not set - using default sea level pressure\n");
         return DEFAULT_SEALEVELPRESSURE_HPA;
@@ -625,6 +622,9 @@ float getSeaLevelPressure() {
         LOG.println("\nIn AP mode - altitude will be ignored\n");
         return INVALID_SEALEVELPRESSURE_HPA;
     }
+
+    const String observationsUrl = "https://api.weather.gov/stations/" + String(config.nws_station) + "/observations/latest";
+    DynamicJsonDocument doc(8192);
 
 #ifdef esp32
     WiFiClientSecure httpsClient;
@@ -640,8 +640,8 @@ float getSeaLevelPressure() {
         httpsClient.println("Connection: close");
         httpsClient.println();
     } else {
-        LOG.println("\nUnable to connect to NWS - using default sea level pressure\n");
-        return DEFAULT_SEALEVELPRESSURE_HPA;
+        LOG.println("\nUnable to connect to NWS - altitude will be ignored\n");
+        return INVALID_SEALEVELPRESSURE_HPA;
     }
 
     // read headers
@@ -651,8 +651,8 @@ float getSeaLevelPressure() {
     }
 
     if (!httpsClient.connected()) {
-        LOG.println("\nNWS dropped connnection - using default sea level pressure\n");
-        return DEFAULT_SEALEVELPRESSURE_HPA;
+        LOG.println("\nNWS dropped connnection - altitude will be ignored\n");
+        return INVALID_SEALEVELPRESSURE_HPA;
     }
 
     deserializeJson(doc, httpsClient.readString());
@@ -671,11 +671,11 @@ float getSeaLevelPressure() {
         if (httpClient.GET() == HTTP_CODE_OK) {
                deserializeJson(doc, httpClient.getString());
         } else {
-            LOG.println("\nBad HTTP Response Code from NWS - using default sea level pressure\n");
+            LOG.println("\nBad HTTP Response Code from NWS - altitude will be ignored\n");
             return INVALID_SEALEVELPRESSURE_HPA;
         }
     } else {
-        LOG.println("\nUnable to connect to NWS - using default sea level pressure\n");
+        LOG.println("\nUnable to connect to NWS - altitude will be ignored\n");
         return INVALID_SEALEVELPRESSURE_HPA;
     }
 #endif
@@ -691,7 +691,7 @@ float getSeaLevelPressure() {
         return value.toInt() / 100.0;
     } 
 
-    LOG.println("\nInvalid response from NWS - using default sea level pressure\n");
+    LOG.println("\nInvalid response from NWS - altitude will be ignored\n");
     return INVALID_SEALEVELPRESSURE_HPA;
 }
 
