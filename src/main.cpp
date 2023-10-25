@@ -1,6 +1,6 @@
 /***************************************************************************
- Copyright © 2023 Shell M. Shrader <shell at shellware dot com
- ---------------------------------------------------------------------------
+Copyright © 2023 Shell M. Shrader <shell at shellware dot com>
+----------------------------------------------------------------------------
 This work is free. You can redistribute it and/or modify it under the
 terms of the Do What The Fuck You Want To Public License, Version 2,
 as published by Sam Hocevar. See the COPYING file for more details.
@@ -10,22 +10,21 @@ as published by Sam Hocevar. See the COPYING file for more details.
 void setup() {
   INIT_LED;
   
-  SerialAndTelnet.setWelcomeMsg(F("BME280 diagnostics\r\n\n"));
+  SerialAndTelnet.setWelcomeMsg("\n\nBME280 diagnostics - Press ? for a list of commands\n");
   LOG.begin(1500000);
 
   LOG.println("");
   LOG.println("");
   LOG.println("BME280 Sensor Event Publisher v1.0.0");
 
-  while (!bme.begin()) {
-    LOG.println(F("Could not find a valid BME280 sensor, check wiring!"));
-    delay(1000);
+  if (!bme.begin()) {
+    LOG.println("\nCould not find a valid BME280 sensor, check wiring!\n");
+  } else {
+    bme_temp->printSensorDetails();
+    bme_pressure->printSensorDetails();
+    bme_humidity->printSensorDetails();
   }
-
-  bme_temp->printSensorDetails();
-  bme_pressure->printSensorDetails();
-  bme_humidity->printSensorDetails();
-
+  
   // wire up EEPROM storage and config
   wireConfig();
 
@@ -33,10 +32,15 @@ void setup() {
   if (!LittleFS.begin()) {
     LOG.println("An Error has occurred while initializing LittleFS\n");
   } else {
-    FSInfo fs_info;
-    LittleFS.info(fs_info);
-    const size_t fs_size = fs_info.totalBytes / 1000;
-    const size_t fs_used = fs_info.usedBytes / 1000;
+    #ifdef esp32
+      const size_t fs_size = LittleFS.totalBytes() / 1000;
+      const size_t fs_used = LittleFS.usedBytes() / 1000;
+    #else
+      FSInfo fs_info;
+      LittleFS.info(fs_info);
+      const size_t fs_size = fs_info.totalBytes / 1000;
+      const size_t fs_used = fs_info.usedBytes / 1000;
+    #endif
     LOG.println("    Filesystem size: [" + String(fs_size) + "] KB");
     LOG.println("         Free space: [" + String(fs_size - fs_used) + "] KB\n");
   }
@@ -78,6 +82,9 @@ void setup() {
 
     if (WiFi.status() == WL_CONNECTED) {
       // initialize time
+      struct tm timeinfo;
+      char timebuf[255];
+
       configTime(0, 0, "pool.ntp.org");
       setenv("TZ", "EST+5EDT,M3.2.0/2,M11.1.0/2", 1);
       tzset();
@@ -85,9 +92,10 @@ void setup() {
       if (!getLocalTime(&timeinfo)) {
         LOG.println("Failed to obtain time");
       }
-      sprintf(buf, "%4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+
+      sprintf(timebuf, "%4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
       LOG.print("\nCurrent Time: ");
-      LOG.println(buf);
+      LOG.println(timebuf);
     }
   }
 
@@ -137,13 +145,17 @@ void setup() {
   strcpy(presSensorName, (uniqueId + "_pressure_sensor").c_str());
   strcpy(altSensorName, (uniqueId + "_altitude_sensor").c_str());
   strcpy(rssiSensorName, (uniqueId + "_rssi_sensor").c_str());
+  strcpy(seaLevelPresSensorName, (uniqueId + "_sea_level_pressure_sensor").c_str());
+  strcpy(ipAddressSensorName, (uniqueId + "_ip_address_sensor").c_str());
 
   tempSensor = new HASensorNumber(tempSensorName, HASensorNumber::PrecisionP3);
   humidSensor = new HASensorNumber(humidSensorName, HASensorNumber::PrecisionP3);
   presSensor = new HASensorNumber(presSensorName, HASensorNumber::PrecisionP3);
   altSensor = new HASensorNumber(altSensorName, HASensorNumber::PrecisionP3);
   rssiSensor = new HASensorNumber(rssiSensorName, HASensorNumber::PrecisionP0);
-
+  seaLevelPresSensor = new HASensorNumber(seaLevelPresSensorName, HASensorNumber::PrecisionP3);
+  ipAddressSensor = new HASensor(ipAddressSensorName);
+  
   tempSensor->setDeviceClass("temperature");
   tempSensor->setName("Temperature");
   tempSensor->setUnitOfMeasurement("F");
@@ -163,6 +175,13 @@ void setup() {
   rssiSensor->setDeviceClass("signal_strength");
   rssiSensor->setName("rssi");
   rssiSensor->setUnitOfMeasurement("dB");
+
+  seaLevelPresSensor->setDeviceClass("atmospheric_pressure");
+  seaLevelPresSensor->setName("Sea Level Barometer");
+  seaLevelPresSensor->setUnitOfMeasurement("inHg");
+
+  ipAddressSensor->setIcon("mdi:ip");
+  ipAddressSensor->setName("IP Address");
 
   updateHtmlTemplate("/setup.template.html");
   LOG.println("Refreshed /setup.html");
@@ -207,22 +226,29 @@ void loop() {
 
   const unsigned long sysmillis = millis();
 
+  // recalibrate sea level hPa every 5 minutes
+  if (config.nws_station_flag == CFG_SET && samples.sample_count == 0 && (sysmillis - samples.last_pressure_calibration >= 300000 || samples.last_pressure_calibration == ULONG_MAX)) {
+    SEALEVELPRESSURE_HPA = getSeaLevelPressure();
+    LOG.println("Sea Level hPa = " + String(SEALEVELPRESSURE_HPA) + "\n");
+    samples.last_pressure_calibration = sysmillis;
+  }
+
   // collect a sample every (publish_interval / samples_per_publish) seconds
   if (sysmillis - samples.last_update >= config.publish_interval / config.samples_per_publish || samples.last_update == ULONG_MAX) {
     sensors_event_t temp_event, pressure_event, humidity_event;
     samples.sample_count++;
 
     bme_temp->getEvent(&temp_event);
-    long currentTemp = round(temp_event.temperature * 1000);
+    const long currentTemp = round(temp_event.temperature * 1000);
 
     bme_pressure->getEvent(&pressure_event);
-    long currentPres = round(pressure_event.pressure * 1000);
-    long currentAlt = round(bme.readAltitude(SEALEVELPRESSURE_HPA) * 1000);
+    const long currentPres = round(pressure_event.pressure * 1000);
+    const long currentAlt = round(bme.readAltitude(SEALEVELPRESSURE_HPA == INVALID_SEALEVELPRESSURE_HPA ? DEFAULT_SEALEVELPRESSURE_HPA : SEALEVELPRESSURE_HPA) * 1000);
 
     bme_humidity->getEvent(&humidity_event);
-    long currentHumid = round(humidity_event.relative_humidity * 1000);
+    const long currentHumid = round(humidity_event.relative_humidity * 1000);
 
-    long currentRssi = abs(WiFi.RSSI());
+    const long currentRssi = abs(WiFi.RSSI());
     
     if (currentTemp > samples.high_temperature) samples.high_temperature = currentTemp;
     if (currentHumid > samples.high_humidity) samples.high_humidity = currentHumid;
@@ -279,11 +305,11 @@ void loop() {
         samples.sample_count-=2;
 
         // use the average of what remains
-        float finalTemp = samples.temperature / samples.sample_count / 1000.0 * 1.8 + 32;
-        float finalHumid = samples.humidity / samples.sample_count / 1000.0;
-        float finalAlt = samples.altitude / samples.sample_count / 1000.0;
-        float finalPres = samples.pressure / samples.sample_count / 1000.0 * HPA_TO_INHG;
-        short finalRssi = samples.rssi / samples.sample_count * -1;
+        const float finalTemp = samples.temperature / samples.sample_count / 1000.0 * 1.8 + 32;
+        const float finalHumid = samples.humidity / samples.sample_count / 1000.0;
+        const float finalAlt = samples.altitude / samples.sample_count / 1000.0;
+        const float finalPres = samples.pressure / samples.sample_count / 1000.0 * HPA_TO_INHG;
+        const short finalRssi = samples.rssi / samples.sample_count * -1;
 
         LOG.print(F("Temperature = "));
         LOG.print(finalTemp, 3);
@@ -311,10 +337,15 @@ void loop() {
 
         if (isSampleValid(finalTemp)) tempSensor->setValue(finalTemp);
         if (isSampleValid(finalHumid)) humidSensor->setValue(finalHumid);
-        if (isSampleValid(finalAlt)) altSensor->setValue(finalAlt);
+        if (isSampleValid(finalAlt) && SEALEVELPRESSURE_HPA != INVALID_SEALEVELPRESSURE_HPA) altSensor->setValue(finalAlt);
         if (isSampleValid(finalPres)) presSensor->setValue(finalPres);
         if (isSampleValid(finalRssi)) rssiSensor->setValue(finalRssi);
 
+        if (isSampleValid(SEALEVELPRESSURE_HPA) && config.nws_station_flag == CFG_SET) seaLevelPresSensor->setValue(SEALEVELPRESSURE_HPA * HPA_TO_INHG);
+
+        const String ipAddr = wifimode == WIFI_STA ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
+        ipAddressSensor->setValue(ipAddr.c_str());
+        
         updateHtmlTemplate("/index.template.html", 
                             toFloatStr(finalTemp, 3), 
                             toFloatStr(finalHumid, 3), 

@@ -1,6 +1,6 @@
 /***************************************************************************
- Copyright © 2023 Shell M. Shrader <shell at shellware dot com
- ---------------------------------------------------------------------------
+Copyright © 2023 Shell M. Shrader <shell at shellware dot com>
+----------------------------------------------------------------------------
 This work is free. You can redistribute it and/or modify it under the
 terms of the Do What The Fuck You Want To Public License, Version 2,
 as published by Sam Hocevar. See the COPYING file for more details.
@@ -17,23 +17,25 @@ as published by Sam Hocevar. See the COPYING file for more details.
 #ifdef esp32
     #include <WiFi.h>
     #include <AsyncTCP.h>
+    #include <WiFiClientSecure.h>
 #else
     #include <ESP8266Wifi.h>
     #include <ESPAsyncTCP.h>
+    #include <ESP8266HTTPClient.h>
+    #include <WiFiClientSecureBearSSL.h>
 
     #define FILE_READ "r"
     #define FILE_WRITE "w"
 #endif
+
+#include <ArduinoJson.h>
 
 #include <DNSServer.h>
 #include <EEPROM.h>
 #include "LittleFS.h"
 
 #include <ESPAsyncWebServer.h>
-
-// #define ELEGANTOTA_USE_ASYNC_WEBSERVER 1
 #include <ElegantOTA.h>
-
 #include <TelnetSpy.h>
 
 // LED is connected to GPIO2 on this board
@@ -50,6 +52,7 @@ as published by Sam Hocevar. See the COPYING file for more details.
 #define MQTT_SERVER_LEN 16
 #define MQTT_USER_LEN 16
 #define MQTT_PASSWD_LEN 32
+#define NWS_STATION_LEN 6
 
 #define DEFAULT_HOSTNAME            "bme280-env-sensor"
 
@@ -81,6 +84,8 @@ typedef struct config_type {
     tiny_int samples_per_publish;
     tiny_int publish_interval_flag;
     unsigned long publish_interval;
+    tiny_int nws_station_flag;
+    char nws_station[NWS_STATION_LEN];
 } CONFIG_TYPE;
 
 typedef struct samples_type {
@@ -101,12 +106,25 @@ typedef struct samples_type {
     long low_rssi = LONG_MAX;
     short sample_count = 0;
     unsigned long last_update = ULONG_MAX;
+    unsigned long last_pressure_calibration = ULONG_MAX;
 } SAMPLES_TYPE;
 
 CONFIG_TYPE config;
 SAMPLES_TYPE samples;
 
+void saveConfig(String hostname, 
+                String ssid, 
+                String ssid_pwd, 
+                String mqtt_server, 
+                String mqtt_user, 
+                String mqtt_pwd, 
+                tiny_int samples_per_publish, 
+                unsigned long publish_interval, 
+                String nws_station);
+
 void wipeConfig();
+float getSeaLevelPressure();
+boolean isNumeric(String str);
 
 TelnetSpy SerialAndTelnet;
 
@@ -115,15 +133,15 @@ Adafruit_Sensor* bme_temp = bme.getTemperatureSensor();
 Adafruit_Sensor* bme_pressure = bme.getPressureSensor();
 Adafruit_Sensor* bme_humidity = bme.getHumiditySensor();
 
-#define SEALEVELPRESSURE_HPA (1013.25)
-#define HPA_TO_INHG          (0.02952998057228486)
+float HPA_TO_INHG = 0.02952998057228486;
+float DEFAULT_SEALEVELPRESSURE_HPA = 1013.25;
+float INVALID_SEALEVELPRESSURE_HPA = SHRT_MIN;
+float SEALEVELPRESSURE_HPA = DEFAULT_SEALEVELPRESSURE_HPA;
 
 WiFiMode_t wifimode = WIFI_AP;
-char buf[255];
 
 bool ota_needs_reboot = false;
 unsigned long ota_progress_millis = 0;
-struct tm timeinfo;
 
 bool setup_needs_update = false;
 bool ap_mode_activity = false;
@@ -134,9 +152,9 @@ AsyncWebServer server(80);
 DNSServer dnsServer;
 const byte DNS_PORT = 53;
 
-WiFiClient client;
+WiFiClient wifiClient;
 HADevice device;
-HAMqtt mqtt(client, device);
+HAMqtt mqtt(wifiClient, device, 10);
 
 byte deviceId[40];
 char deviceName[40];
@@ -146,9 +164,13 @@ char humidSensorName[80];
 char presSensorName[80];
 char altSensorName[80];
 char rssiSensorName[80];
+char seaLevelPresSensorName[80];
+char ipAddressSensorName[80];
 
 HASensorNumber* tempSensor;
 HASensorNumber* humidSensor;
 HASensorNumber* presSensor;
 HASensorNumber* altSensor;
 HASensorNumber* rssiSensor;
+HASensorNumber* seaLevelPresSensor;
+HASensor* ipAddressSensor;
