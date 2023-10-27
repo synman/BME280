@@ -5,6 +5,30 @@ This work is free. You can redistribute it and/or modify it under the
 terms of the Do What The Fuck You Want To Public License, Version 2,
 as published by Sam Hocevar. See the COPYING file for more details.
 ****************************************************************************/
+#include <TelnetSpy.h>
+TelnetSpy SerialAndTelnet;
+
+#ifdef BME280_DEBUG
+    #define LOG_BEGIN(baudrate)  SerialAndTelnet.begin(baudrate)
+    #define LOG_PRINT(...)       SerialAndTelnet.print(__VA_ARGS__)
+    #define LOG_PRINTLN(...)     SerialAndTelnet.println(__VA_ARGS__)
+    #define LOG_PRINTF(...)      SerialAndTelnet.printf(__VA_ARGS__)
+    #define LOG_HANDLE()         SerialAndTelnet.handle() ; checkForRemoteCommand()
+    #define LOG_FLUSH()          SerialAndTelnet.flush()
+    #define LOG_WELCOME_MSG(msg) SerialAndTelnet.setWelcomeMsg(msg)
+#else
+    #define LOG_BEGIN(baudrate)
+    #define LOG_PRINT(...) 
+    #define LOG_PRINTLN(...)
+    #define LOG_PRINTF(...) 
+    #define LOG_HANDLE()
+    #define LOG_FLUSH()
+    #define LOG_WELCOME_MSG(msg)
+#endif
+
+#define WATCHDOG_TIMEOUT_S 15
+volatile bool timer_pinged;
+
 #include <Arduino.h>
 #include <ArduinoHA.h>
 #include <ArduinoOTA.h>
@@ -18,14 +42,41 @@ as published by Sam Hocevar. See the COPYING file for more details.
     #include <WiFi.h>
     #include <AsyncTCP.h>
     #include <WiFiClientSecure.h>
+
+    #define WIFI_DISCONNECTED WIFI_EVENT_STA_DISCONNECTED
+
+    hw_timer_t * watchDogTimer = NULL;
+
+    void IRAM_ATTR watchDogInterrupt() {
+        LOG_PRINTLN("watchdog triggered reboot");
+        LOG_FLUSH();
+        ESP.restart();
+    }
 #else
+    #define USING_TIM_DIV256 true
+    #define WIFI_DISCONNECTED WIFI_EVENT_STAMODE_DISCONNECTED
+    #define FILE_READ "r"
+    #define FILE_WRITE "w"
+
     #include <ESP8266Wifi.h>
+    // #include <ESP8266WiFiGeneric.h>
     #include <ESPAsyncTCP.h>
     #include <ESP8266HTTPClient.h>
     #include <WiFiClientSecureBearSSL.h>
+    #include "ESP8266TimerInterrupt.h"
 
-    #define FILE_READ "r"
-    #define FILE_WRITE "w"
+    ESP8266Timer ITimer;
+
+    void IRAM_ATTR TimerHandler() {
+        if (timer_pinged) {
+            LOG_PRINTLN("watchdog triggered reboot");
+            LOG_FLUSH();
+            ESP.restart();
+        } else {
+            timer_pinged = true;
+            LOG_PRINTLN("\nPING");
+        }
+    }
 #endif
 
 #include <ArduinoJson.h>
@@ -36,14 +87,17 @@ as published by Sam Hocevar. See the COPYING file for more details.
 
 #include <ESPAsyncWebServer.h>
 #include <ElegantOTA.h>
-#include <TelnetSpy.h>
 
-// LED is connected to GPIO2 on this board
-#define INIT_LED { pinMode(2, OUTPUT); digitalWrite(2, LOW); }
-#define LED_ON   { digitalWrite(2, HIGH); }
-#define LED_OFF  { digitalWrite(2, LOW); }
-
-#define LOG SerialAndTelnet
+// LED is connected to GPIO2 on these boards
+#ifdef esp32
+    #define INIT_LED { pinMode(2, OUTPUT); digitalWrite(2, LOW); }
+    #define LED_ON   { digitalWrite(2, HIGH); }
+    #define LED_OFF  { digitalWrite(2, LOW); }
+#else
+    #define INIT_LED { pinMode(2, OUTPUT); digitalWrite(2, HIGH); }
+    #define LED_ON   { digitalWrite(2, LOW); }
+    #define LED_OFF  { digitalWrite(2, HIGH); }
+#endif
 
 #define EEPROM_SIZE 256
 #define HOSTNAME_LEN 32
@@ -112,6 +166,8 @@ typedef struct samples_type {
 CONFIG_TYPE config;
 SAMPLES_TYPE samples;
 
+void watchDogRefresh();
+
 void saveConfig(String hostname, 
                 String ssid, 
                 String ssid_pwd, 
@@ -125,8 +181,7 @@ void saveConfig(String hostname,
 void wipeConfig();
 float getSeaLevelPressure();
 boolean isNumeric(String str);
-
-TelnetSpy SerialAndTelnet;
+void printHeapStats();
 
 Adafruit_BME280 bme; // use I2C interface
 Adafruit_Sensor* bme_temp = bme.getTemperatureSensor();
@@ -140,7 +195,7 @@ float SEALEVELPRESSURE_HPA = DEFAULT_SEALEVELPRESSURE_HPA;
 
 WiFiMode_t wifimode = WIFI_AP;
 
-bool ota_needs_reboot = false;
+bool esp_reboot_requested = false;
 unsigned long ota_progress_millis = 0;
 
 bool setup_needs_update = false;
@@ -153,6 +208,8 @@ DNSServer dnsServer;
 const byte DNS_PORT = 53;
 
 WiFiClient wifiClient;
+int wifiState = WIFI_EVENT_MAX;
+
 HADevice device;
 HAMqtt mqtt(wifiClient, device, 10);
 

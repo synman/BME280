@@ -7,6 +7,19 @@ as published by Sam Hocevar. See the COPYING file for more details.
 ****************************************************************************/
 #include "config.h"
 
+
+void watchDogRefresh() {
+  #ifdef esp32
+    timerWrite(watchDogTimer, 0); 
+  #else
+    if (timer_pinged) {
+      timer_pinged = false;
+      LOG_PRINTLN("PONG");
+      LOG_FLUSH();
+    }
+  #endif
+}
+
 void blink() {
     LED_ON;
     delay(200);
@@ -20,13 +33,9 @@ void blink() {
 void wireConfig() {
     // configuration storage
     EEPROM.begin(EEPROM_SIZE);
-    uint8_t* p = (uint8_t*)(&config);
-    for (unsigned int i = 0; i < sizeof(config); i++) {
-        *(p + i) = EEPROM.read(i);
-    }
-    EEPROM.commit();
+    EEPROM.get(0, config);
     EEPROM.end();
-
+    
     if (config.hostname_flag != CFG_SET) {
         strcpy(config.hostname, DEFAULT_HOSTNAME);
     }
@@ -47,44 +56,55 @@ void wireConfig() {
 
     if (config.nws_station_flag != CFG_SET) memset(config.nws_station, CFG_NOT_SET, NWS_STATION_LEN);
     
-    LOG.println("        EEPROM size: [" + String(EEPROM_SIZE)+ "]");
-    LOG.println("        config size: [" + String(sizeof(config))+ "]\n");
-    LOG.println("        config host: [" + String(config.hostname) + "] stored: " + (config.hostname_flag == CFG_SET ? "true" : "false"));
-    LOG.println("        config ssid: [" + String(config.ssid) + "] stored: " + (config.ssid_flag == CFG_SET ? "true" : "false"));
-    LOG.println("    config ssid pwd: [" + String(config.ssid_pwd) + "] stored: " + (config.ssid_pwd_flag == CFG_SET ? "true\n" : "false\n"));
-    LOG.println(" config mqtt server: [" + String(config.mqtt_server) + "] stored: " + (config.mqtt_server_flag == CFG_SET ? "true" : "false"));
-    LOG.println("   config mqtt user: [" + String(config.mqtt_user) + "] stored: " + (config.mqtt_user_flag == CFG_SET ? "true" : "false"));
-    LOG.println("    config mqtt pwd: [" + String(config.mqtt_pwd) + "] stored: " + (config.mqtt_pwd_flag == CFG_SET ? "true\n" : "false\n"));
-    LOG.println(" config num samples: [" + String(config.samples_per_publish) + "] stored: " + (config.samples_per_publish_flag == CFG_SET ? "true" : "false"));
-    LOG.println("config pub interval: [" + String(config.publish_interval) + "] stored: " + (config.publish_interval_flag == CFG_SET ? "true\n" : "false\n"));
-    LOG.println(" config nws station: [" + String(config.nws_station) + "] stored: " + (config.nws_station_flag == CFG_SET ? "true\n" : "false\n"));
+    LOG_PRINTLN();
+    LOG_PRINTLN("        EEPROM size: [" + String(EEPROM_SIZE)+ "]");
+    LOG_PRINTLN("        config size: [" + String(sizeof(config))+ "]\n");
+    LOG_PRINTLN("        config host: [" + String(config.hostname) + "] stored: " + (config.hostname_flag == CFG_SET ? "true" : "false"));
+    LOG_PRINTLN("        config ssid: [" + String(config.ssid) + "] stored: " + (config.ssid_flag == CFG_SET ? "true" : "false"));
+    LOG_PRINTLN("    config ssid pwd: [" + String(config.ssid_pwd) + "] stored: " + (config.ssid_pwd_flag == CFG_SET ? "true\n" : "false\n"));
+    LOG_PRINTLN(" config mqtt server: [" + String(config.mqtt_server) + "] stored: " + (config.mqtt_server_flag == CFG_SET ? "true" : "false"));
+    LOG_PRINTLN("   config mqtt user: [" + String(config.mqtt_user) + "] stored: " + (config.mqtt_user_flag == CFG_SET ? "true" : "false"));
+    LOG_PRINTLN("    config mqtt pwd: [" + String(config.mqtt_pwd) + "] stored: " + (config.mqtt_pwd_flag == CFG_SET ? "true\n" : "false\n"));
+    LOG_PRINTLN(" config num samples: [" + String(config.samples_per_publish) + "] stored: " + (config.samples_per_publish_flag == CFG_SET ? "true" : "false"));
+    LOG_PRINTLN("config pub interval: [" + String(config.publish_interval) + "] stored: " + (config.publish_interval_flag == CFG_SET ? "true\n" : "false\n"));
+    LOG_PRINTLN(" config nws station: [" + String(config.nws_station) + "] stored: " + (config.nws_station_flag == CFG_SET ? "true" : "false"));
 }
 
 void onOTAStart() {
     // Log when OTA has started
-    LOG.println("OTA update started!");
+    LOG_PRINTLN("\nOTA update started!");
     // <Add your own code here>
 }
 
 void onOTAProgress(size_t current, size_t final) {
     // Log every 1 second
     if (millis() - ota_progress_millis > 1000) {
+        watchDogRefresh();
         ota_progress_millis = millis();
-        LOG.printf("OTA Progress Current: %u bytes, Final: %u bytes\n", current, final);
+        LOG_PRINTF("OTA Progress Current: %u bytes, Final: %u bytes\r", current, final);
+        LOG_FLUSH();
     }
 }
 
 void onOTAEnd(bool success) {
     // Log when OTA has finished
     if (success) {
-        LOG.println("OTA update finished successfully!");
-        ota_needs_reboot = true;
+        LOG_PRINTLN("\nOTA update finished successfully!");
+        esp_reboot_requested = true;
     } else {
-        LOG.println("There was an error during OTA update!");
+        LOG_PRINTLN("\nThere was an error during OTA update!");
     }
+    LOG_FLUSH();
 }
 
-void updateHtmlTemplate(String template_filename, String temperature = "", String humidity = "", String altitude = "", String pressure = "", String rssi = "") {
+void updateHtmlTemplate(String template_filename, 
+                        String temperature = "", 
+                        String humidity = "", 
+                        String altitude = "", 
+                        String pressure = "", 
+                        String rssi = "",
+                        bool showTime = true) {
+
     String output_filename = template_filename;
     output_filename.replace(".template", "");
 
@@ -173,6 +193,9 @@ void updateHtmlTemplate(String template_filename, String temperature = "", Strin
             while (html.indexOf("{timestamp}", 0) != -1) {
                 html.replace("{timestamp}", timestamp);
             }
+
+            if (showTime) 
+                LOG_PRINTLN("Timestamp   = " + timestamp);
         }
 
         File _index = LittleFS.open(output_filename + ".new", FILE_WRITE);
@@ -196,31 +219,35 @@ void wireArduinoOTA(const char* hostname) {
             type = "filesystem";
 
         // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-        LOG.println("OTA triggered for updating " + type);
+        LOG_PRINTLN("\nOTA triggered for updating " + type);
     });
 
     ArduinoOTA.onEnd([]()
     {
-        LOG.println("\nEnd");
+        LOG_PRINTLN("\nOTA End");
+        LOG_FLUSH();
     });
 
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total)
     {
-        LOG.printf("Progress: %u%%\r", (progress / (total / 100)));
+        watchDogRefresh();
+        LOG_PRINTF("Progress: %u%%\r", (progress / (total / 100)));
+        LOG_FLUSH();
     });
 
     ArduinoOTA.onError([](ota_error_t error)
     {
-        LOG.printf("Error[%u]: ", error);
-        if (error == OTA_AUTH_ERROR) LOG.println("Auth Failed");
-        else if (error == OTA_BEGIN_ERROR) LOG.println("Begin Failed");
-        else if (error == OTA_CONNECT_ERROR) LOG.println("Connect Failed");
-        else if (error == OTA_RECEIVE_ERROR) LOG.println("Receive Failed");
-        else if (error == OTA_END_ERROR) LOG.println("End Failed");
+        LOG_PRINTF("\nError[%u]: ", error);
+        if (error == OTA_AUTH_ERROR) LOG_PRINTLN("Auth Failed");
+        else if (error == OTA_BEGIN_ERROR) LOG_PRINTLN("Begin Failed");
+        else if (error == OTA_CONNECT_ERROR) LOG_PRINTLN("Connect Failed");
+        else if (error == OTA_RECEIVE_ERROR) LOG_PRINTLN("Receive Failed");
+        else if (error == OTA_END_ERROR) LOG_PRINTLN("End Failed");
+        LOG_FLUSH();
     });
 
     ArduinoOTA.begin();
-    LOG.println("ArduinoOTA started");
+    LOG_PRINTLN("\nArduinoOTA started");
 }
 
 void wireWebServerAndPaths() {
@@ -229,14 +256,14 @@ void wireWebServerAndPaths() {
         {
             ap_mode_activity = true;
             request->redirect("/index.html");
-            LOG.println(request->url() + " handled");
+            LOG_PRINTLN("\n" + request->url() + " handled");
         });
 
     // define setup document
     server.on("/setup", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             request->send(LittleFS, "/setup.html", "text/html");
-            LOG.println(request->url() + " handled");
+            LOG_PRINTLN("\n" + request->url() + " handled");
         });
 
     // captive portal
@@ -244,45 +271,45 @@ void wireWebServerAndPaths() {
         {
             ap_mode_activity = true;
             request->send(LittleFS, "/index.html", "text/html");
-            LOG.println(request->url() + " handled");
+            LOG_PRINTLN("\n" + request->url() + " handled");
         });
     server.on("/library/test/success.html", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             ap_mode_activity = true;
             request->send(LittleFS, "/index.html", "text/html");
-            LOG.println(request->url() + " handled");
+            LOG_PRINTLN("\n" + request->url() + " handled");
         });
     server.on("/generate_204", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             ap_mode_activity = true;
             request->send(LittleFS, "/index.html", "text/html");
-            LOG.println(request->url() + " handled");
+            LOG_PRINTLN("\n" + request->url() + " handled");
         });
     server.on("/gen_204", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             ap_mode_activity = true;
             request->send(LittleFS, "/index.html", "text/html");
-            LOG.println(request->url() + " handled");
+            LOG_PRINTLN("\n" + request->url() + " handled");
         });
     server.on("/ncsi.txt", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             ap_mode_activity = true;
             request->send(LittleFS, "/index.html", "text/html");
-            LOG.println(request->url() + " handled");
+            LOG_PRINTLN("\n" + request->url() + " handled");
         });
     server.on("/check_network_status.txt", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             ap_mode_activity = true;
             request->send(LittleFS, "/index.html", "text/html");
-            LOG.println(request->url() + " handled");
+            LOG_PRINTLN("\n" + request->url() + " handled");
         });
 
     // request reboot
     server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest* request)
         {
             request->redirect("/index.html");
-            LOG.println(request->url() + " handled");
-            ota_needs_reboot = true;
+            LOG_PRINTLN("\n" + request->url() + " handled");
+            esp_reboot_requested = true;
         });
 
     // save config
@@ -311,17 +338,17 @@ void wireWebServerAndPaths() {
                        request->getParam("nws_station")->value());
 
             request->redirect("/index.html");
-            LOG.println(request->url() + " handled");
+            LOG_PRINTLN("\n" + request->url() + " handled");
         });
 
     // load config
     server.on("/load", HTTP_GET, [](AsyncWebServerRequest* request)
         {
-            LOG.println();
+            LOG_PRINTLN();
             wireConfig();
             setup_needs_update = true;
             request->redirect("/index.html");
-            LOG.println(request->url() + " handled");
+            LOG_PRINTLN("\n" + request->url() + " handled");
         });
 
     // wipe config
@@ -332,10 +359,10 @@ void wireWebServerAndPaths() {
             wipeConfig();
 
             request->redirect("/index.html");
-            LOG.println(request->url() + " handled");
+            LOG_PRINTLN("\n" + request->url() + " handled");
 
             // trigger a reboot
-            if (reboot) ota_needs_reboot = true;
+            if (reboot) esp_reboot_requested = true;
         });
 
     // 404 (includes file handling)
@@ -353,16 +380,16 @@ void wireWebServerAndPaths() {
                     response->addHeader("Cache-Control", "no-store");
                 }
                 request->send(response);
-                LOG.println(request->url() + " handled");
+                LOG_PRINTLN("\n" + request->url() + " handled");
             } else {
                 request->send(404, "text/plain", request->url() + " Not found!");
-                LOG.println(request->url() + " Not found!");
+                LOG_PRINTLN("\n" + request->url() + " Not found!");
             }
         });
 
     // begin the web server
     server.begin();
-    LOG.println("HTTP server started");
+    LOG_PRINTLN("HTTP server started");
 }
 
 void saveConfig(String hostname, 
@@ -449,10 +476,7 @@ void saveConfig(String hostname,
     }
 
     EEPROM.begin(EEPROM_SIZE);
-    uint8_t* p = (uint8_t*)(&config);
-    for (unsigned long i = 0; i < sizeof(config); i++) {
-        EEPROM.write(i, *(p + i));
-    }
+    EEPROM.put(0, config);
     EEPROM.commit();
     EEPROM.end();
 
@@ -482,14 +506,11 @@ void wipeConfig() {
     memset(config.nws_station, CFG_NOT_SET, NWS_STATION_LEN);
 
     EEPROM.begin(EEPROM_SIZE);
-    uint8_t* p = (uint8_t*)(&config);
-    for (unsigned long i = 0; i < sizeof(config); i++) {
-        EEPROM.write(i, *(p + i));
-    }
+    EEPROM.put(0,config);
     EEPROM.commit();
     EEPROM.end();
 
-    LOG.println("\nconfig wiped\n");
+    LOG_PRINTLN("\nConfig wiped");
 }
 
 bool isSampleValid(float value) {
@@ -506,18 +527,25 @@ String toFloatStr(float value, short decimal_places) {
     return String(buf);
 }
 
+#ifdef BME280_DEBUG
 void checkForRemoteCommand() {
-    if (LOG.available() > 0) {
-		char c = LOG.read();
+    if (SerialAndTelnet.available() > 0) {
+		char c = SerialAndTelnet.read();
 		switch (c) {
 		case '\r':
-			LOG.println();
+			LOG_PRINT("\r");
 			break;
 		case '\n':
+			LOG_PRINT("\n");
+			break;
+		case 'D':
+			LOG_PRINTLN("\nDisconnecting Wi-Fi. . .");
+            LOG_FLUSH();
+            WiFi.disconnect();
 			break;
         case 'P':
             SEALEVELPRESSURE_HPA = getSeaLevelPressure();
-            LOG.println("\nSea Level Pressure: [" + String(SEALEVELPRESSURE_HPA) + "]\n");        
+            LOG_PRINTLN("\nSea Level Pressure: [" + String(SEALEVELPRESSURE_HPA) + "]\n");        
             break;
         case 'F':
             {
@@ -530,37 +558,45 @@ void checkForRemoteCommand() {
                     const size_t fs_size = fs_info.totalBytes / 1000;
                     const size_t fs_used = fs_info.usedBytes / 1000;
                 #endif
-                LOG.println("    Filesystem size: [" + String(fs_size) + "] KB");
-                LOG.println("         Free space: [" + String(fs_size - fs_used) + "] KB\n");
+                LOG_PRINTLN("\n    Filesystem size: [" + String(fs_size) + "] KB");
+                LOG_PRINTLN("         Free space: [" + String(fs_size - fs_used) + "] KB\n");
             }
             break;
 		case 'S':
             {
-                LOG.println("\nType SSID and press <ENTER>");
+                LOG_PRINTLN("\nType SSID and press <ENTER>");
+                LOG_FLUSH();
+
                 String ssid;
                 do {
-                    if (LOG.available() > 0) {
-                        c = LOG.read();
+                    if (SerialAndTelnet.available() > 0) {
+                        c = SerialAndTelnet.read();
                         if (c != 10 && c != 13) {
-                            LOG.print(c);
+                            LOG_PRINT(c);
+                            LOG_FLUSH();
                             ssid = ssid + String(c);
                         }
                     }
+                    watchDogRefresh();
                 } while (c != 13);
 
-                LOG.println("\nType PASSWORD and press <ENTER>");
+                LOG_PRINTLN("\nType PASSWORD and press <ENTER>");
+                LOG_FLUSH();
                 String ssid_pwd;
                 do {
-                    if (LOG.available() > 0) {
-                        c = LOG.read();
+                    if (SerialAndTelnet.available() > 0) {
+                        c = SerialAndTelnet.read();
                         if (c != 10 && c != 13) {
-                            LOG.print(c);
+                            LOG_PRINT(c);
+                            LOG_FLUSH();
                             ssid_pwd = ssid_pwd + String(c);
                         }
                     }
+                    watchDogRefresh();
                 } while (c != 13);
 
-                LOG.println("\n\nSSID=[" + ssid + "] PWD=[" + ssid_pwd + "]\n");
+                LOG_PRINTLN("\n\nSSID=[" + ssid + "] PWD=[" + ssid_pwd + "]\n");
+                LOG_FLUSH();
 
                 memset(config.ssid, CFG_NOT_SET, WIFI_SSID_LEN);
                 if (ssid.length() > 0) {
@@ -579,14 +615,12 @@ void checkForRemoteCommand() {
                 }
 
                 EEPROM.begin(EEPROM_SIZE);
-                uint8_t* p = (uint8_t*)(&config);
-                for (unsigned long i = 0; i < sizeof(config); i++) {
-                    EEPROM.write(i, *(p + i));
-                }
+                EEPROM.put(0, config);
                 EEPROM.commit();
                 EEPROM.end();
 
-                LOG.println("SSID and Password saved - reload config or reboot\n");
+                LOG_PRINTLN("SSID and Password saved - reload config or reboot\n");
+                LOG_FLUSH();
             }
 			break;
 		case 'L':
@@ -597,29 +631,33 @@ void checkForRemoteCommand() {
             wipeConfig();
 			break;
 		case 'X':
-			LOG.println(F("\r\nClosing session..."));
+			LOG_PRINTLN(F("\r\nClosing session..."));
 			SerialAndTelnet.disconnectClient();
 			break;
 		case 'R':
-			LOG.println(F("\r\nsubmitting reboot request..."));
-			ota_needs_reboot = true;
+			LOG_PRINTLN(F("\r\nsubmitting reboot request..."));
+			esp_reboot_requested = true;
 			break;
+        case ' ':
+            // do nothing -- just a simple echo
+            break;
 		default:
-			LOG.print("\n\nCommands:\n\nP = Sea Level Pressure\nF = Filesystem Info\nS - Set SSID / Password\nL = Reload Config\nW = Wipe Config\nX = Close Session\nR = Reboot ESP\n\n");
+			LOG_PRINT("\n\nCommands:\n\nD = Disconnect WiFi\nP = Sea Level Pressure\nF = Filesystem Info\nS - Set SSID / Password\nL = Reload Config\nW = Wipe Config\nX = Close Session\nR = Reboot ESP\n\n");
 			break;
 		}
-		LOG.flush();
+		SerialAndTelnet.flush();
 	}
 }
+#endif
 
 float getSeaLevelPressure() {
     if (config.nws_station_flag == CFG_NOT_SET) {
-        LOG.println("\nNWS Station is not set - using default sea level pressure\n");
+        LOG_PRINTLN("\nNWS Station is not set - using default sea level pressure");
         return DEFAULT_SEALEVELPRESSURE_HPA;
     }
 
     if (wifimode == WIFI_AP) {
-        LOG.println("\nIn AP mode - altitude will be ignored\n");
+        LOG_PRINTLN("\nIn AP mode - altitude will be ignored");
         return INVALID_SEALEVELPRESSURE_HPA;
     }
 
@@ -640,7 +678,7 @@ float getSeaLevelPressure() {
         httpsClient.println("Connection: close");
         httpsClient.println();
     } else {
-        LOG.println("\nUnable to connect to NWS - altitude will be ignored\n");
+        LOG_PRINTLN("\nUnable to connect to NWS - altitude will be ignored");
         return INVALID_SEALEVELPRESSURE_HPA;
     }
 
@@ -651,7 +689,7 @@ float getSeaLevelPressure() {
     }
 
     if (!httpsClient.connected()) {
-        LOG.println("\nNWS dropped connnection - altitude will be ignored\n");
+        LOG_PRINTLN("\nNWS dropped connnection - altitude will be ignored");
         return INVALID_SEALEVELPRESSURE_HPA;
     }
 
@@ -671,11 +709,11 @@ float getSeaLevelPressure() {
         if (httpClient.GET() == HTTP_CODE_OK) {
                deserializeJson(doc, httpClient.getString());
         } else {
-            LOG.println("\nBad HTTP Response Code from NWS - altitude will be ignored\n");
+            LOG_PRINTLN("\nBad HTTP Response Code from NWS - altitude will be ignored");
             return INVALID_SEALEVELPRESSURE_HPA;
         }
     } else {
-        LOG.println("\nUnable to connect to NWS - altitude will be ignored\n");
+        LOG_PRINTLN("\nUnable to connect to NWS - altitude will be ignored");
         return INVALID_SEALEVELPRESSURE_HPA;
     }
 #endif
@@ -691,7 +729,7 @@ float getSeaLevelPressure() {
         return value.toInt() / 100.0;
     } 
 
-    LOG.println("\nInvalid response from NWS - altitude will be ignored\n");
+    LOG_PRINTLN("\nInvalid response from NWS - altitude will be ignored");
     return INVALID_SEALEVELPRESSURE_HPA;
 }
 
@@ -719,4 +757,25 @@ boolean isNumeric(String str) {
         return false;
     }
     return true;
+}
+
+void printHeapStats() {
+    #ifdef BME280_DEBUG
+        uint32_t myfree;
+        uint32_t mymax;
+        uint8_t myfrag;
+
+        #ifdef esp32 
+        const uint32_t size = ESP.getHeapSize();
+        const uint32_t free = ESP.getFreeHeap();
+        const uint32_t max = ESP.getMaxAllocHeap();
+        const uint32_t min = ESP.getMinFreeHeap();
+        LOG_PRINTF("\n(%ld) -> size: %5d - free: %5d - max: %5d - min: %5d <-\n", millis(), size, free, max, min);
+        #else
+        ESP.getHeapStats(&myfree, &mymax, &myfrag);
+        LOG_PRINTF("\n(%ld) -> free: %5d - max: %5d - frag: %3d%% <-\n", millis(), myfree, mymax, myfrag);
+        #endif
+    #endif
+
+    return;
 }

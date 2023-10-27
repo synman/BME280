@@ -10,15 +10,13 @@ as published by Sam Hocevar. See the COPYING file for more details.
 void setup() {
   INIT_LED;
   
-  SerialAndTelnet.setWelcomeMsg("\n\nBME280 diagnostics - Press ? for a list of commands\n");
-  LOG.begin(1500000);
+  LOG_WELCOME_MSG("\n\nBME280 diagnostics - Press ? for a list of commands\n");
+  LOG_BEGIN(1500000);
 
-  LOG.println("");
-  LOG.println("");
-  LOG.println("BME280 Sensor Event Publisher v1.0.0");
+  LOG_PRINTLN("\n\nBME280 Sensor Event Publisher v1.0.0");
 
   if (!bme.begin()) {
-    LOG.println("\nCould not find a valid BME280 sensor, check wiring!\n");
+    LOG_PRINTLN("\nCould not find a valid BME280 sensor, check wiring!");
   } else {
     bme_temp->printSensorDetails();
     bme_pressure->printSensorDetails();
@@ -30,32 +28,58 @@ void setup() {
 
   // start and mount our littlefs file system
   if (!LittleFS.begin()) {
-    LOG.println("An Error has occurred while initializing LittleFS\n");
+    LOG_PRINTLN("\nAn Error has occurred while initializing LittleFS\n");
   } else {
-    #ifdef esp32
-      const size_t fs_size = LittleFS.totalBytes() / 1000;
-      const size_t fs_used = LittleFS.usedBytes() / 1000;
-    #else
-      FSInfo fs_info;
-      LittleFS.info(fs_info);
-      const size_t fs_size = fs_info.totalBytes / 1000;
-      const size_t fs_used = fs_info.usedBytes / 1000;
+    #ifdef BME280_DEBUG
+      #ifdef esp32
+        const size_t fs_size = LittleFS.totalBytes() / 1000;
+        const size_t fs_used = LittleFS.usedBytes() / 1000;
+      #else
+        FSInfo fs_info;
+        LittleFS.info(fs_info);
+        const size_t fs_size = fs_info.totalBytes / 1000;
+        const size_t fs_used = fs_info.usedBytes / 1000;
+      #endif
     #endif
-    LOG.println("    Filesystem size: [" + String(fs_size) + "] KB");
-    LOG.println("         Free space: [" + String(fs_size - fs_used) + "] KB\n");
+    LOG_PRINTLN();
+    LOG_PRINTLN("    Filesystem size: [" + String(fs_size) + "] KB");
+    LOG_PRINTLN("         Free space: [" + String(fs_size - fs_used) + "] KB");
+    LOG_PRINTLN("          Free Heap: [" + String(ESP.getFreeHeap()) + "]");
   }
 
   // Connect to Wi-Fi network with SSID and password
   // or fall back to AP mode
+  WiFi.persistent(false);
+  WiFi.setAutoConnect(false);
+  WiFi.setAutoReconnect(false);
   WiFi.hostname(config.hostname);
   WiFi.mode(wifimode);
+
+  #ifdef esp32
+    static const wifi_event_id_t disconnectHandler = WiFi.onEvent([](WiFiEvent_t event) 
+      { 
+        wifiState = event; 
+        if (wifiState == WIFI_DISCONNECTED) {
+          LOG_PRINTLN("\nWiFi disconnected");
+          LOG_FLUSH();
+        }
+      });
+  #else
+    static const WiFiEventHandler disconnectHandler = WiFi.onStationModeDisconnected([](WiFiEventStationModeDisconnected event) 
+      {
+        LOG_PRINTF("\nWiFi disconnected - reason: %d\n", event.reason);
+        LOG_FLUSH();
+        wifiState = WIFI_DISCONNECTED;
+      });
+  #endif
 
   // WiFi.scanNetworks will return the number of networks found
   uint8_t nothing = 0;
   uint8_t *bestBssid;
   bestBssid = &nothing;
-
   short bestRssi = SHRT_MIN;
+
+  LOG_PRINTLN("\nScanning Wi-Fi networks. . .");
   int n = WiFi.scanNetworks();
 
   // arduino is too stupid to know which AP has the best signal
@@ -63,6 +87,7 @@ void setup() {
   // so we find the best one and tell it to use it
   if (n > 0 && String(config.ssid).length() > 0) {
     for (int i = 0; i < n; ++i) {
+      LOG_PRINTF("   ssid: %s - rssi: %d\n", WiFi.SSID(i), WiFi.RSSI(i));
       if (WiFi.SSID(i).equals(config.ssid) && WiFi.RSSI(i) > bestRssi) {
         bestRssi = WiFi.RSSI(i);
         bestBssid = WiFi.BSSID(i);
@@ -71,14 +96,16 @@ void setup() {
   }
 
   if (wifimode == WIFI_STA && bestRssi != SHRT_MIN) {
-    LOG.print("Connecting to " + String(config.ssid) + " ");
+    WiFi.disconnect();
+    delay(100);
+    LOG_PRINTF("\nConnecting to %s / %d dB ", config.ssid, bestRssi);
     WiFi.begin(config.ssid, config.ssid_pwd, 0, bestBssid, true);
-    for (tiny_int x = 0; x < 60 && WiFi.status() != WL_CONNECTED; x++) {
+    for (tiny_int x = 0; x < 120 && WiFi.status() != WL_CONNECTED; x++) {
       blink();
-      LOG.print(".");
+      LOG_PRINT(".");
     }
 
-    LOG.println();
+    LOG_PRINTLN();
 
     if (WiFi.status() == WL_CONNECTED) {
       // initialize time
@@ -90,12 +117,12 @@ void setup() {
       tzset();
 
       if (!getLocalTime(&timeinfo)) {
-        LOG.println("Failed to obtain time");
+        LOG_PRINTLN("\nFailed to obtain time");
+      } else {
+        sprintf(timebuf, "%4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        LOG_PRINT("\nCurrent Time: ");
+        LOG_PRINTLN(timebuf);
       }
-
-      sprintf(timebuf, "%4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-      LOG.print("\nCurrent Time: ");
-      LOG.println(timebuf);
     }
   }
 
@@ -104,13 +131,14 @@ void setup() {
     WiFi.mode(wifimode);
     WiFi.softAP(config.hostname);
     dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
-    LOG.println("\nSoftAP [" + String(config.hostname) + "] started\n");
+    LOG_PRINTLN("\nSoftAP [" + String(config.hostname) + "] started");
   }
-      
-  LOG.print("    Hostname: "); LOG.println(config.hostname);
-  LOG.print("Connected to: "); LOG.println(wifimode == WIFI_STA ? config.ssid : config.hostname);
-  LOG.print("  IP address: "); LOG.println(wifimode == WIFI_STA ? WiFi.localIP().toString() : WiFi.softAPIP().toString());
-  LOG.print("        RSSI: "); LOG.println(String(WiFi.RSSI()) + " dB\n");
+
+  LOG_PRINTLN();      
+  LOG_PRINT("    Hostname: "); LOG_PRINTLN(config.hostname);
+  LOG_PRINT("Connected to: "); LOG_PRINTLN(wifimode == WIFI_STA ? config.ssid : config.hostname);
+  LOG_PRINT("  IP address: "); LOG_PRINTLN(wifimode == WIFI_STA ? WiFi.localIP().toString() : WiFi.softAPIP().toString());
+  LOG_PRINT("        RSSI: "); LOG_PRINTLN(String(WiFi.RSSI()) + " dB");
 
   // enable mDNS via espota and enable ota
   wireArduinoOTA(config.hostname);
@@ -121,13 +149,13 @@ void setup() {
   ElegantOTA.onProgress(onOTAProgress);
   ElegantOTA.onEnd(onOTAEnd);
 
-  LOG.println("ElegantOTA started");
+  LOG_PRINTLN("ElegantOTA started");
 
   // set device details
   String uniqueId = String(config.hostname);
   std::replace(uniqueId.begin(), uniqueId.end(), '-', '_');
 
-  for (unsigned short i = 0; i < uniqueId.length(); i++) {
+  for (tiny_int i = 0; i < uniqueId.length(); i++) {
     deviceId[i] = (byte)uniqueId[i];
   }
 
@@ -140,21 +168,21 @@ void setup() {
   device.setModel("BME280");
 
   // configure sensors
-  strcpy(tempSensorName, (uniqueId + "_temperature_sensor").c_str());
-  strcpy(humidSensorName, (uniqueId + "_humdity_sensor").c_str());
-  strcpy(presSensorName, (uniqueId + "_pressure_sensor").c_str());
-  strcpy(altSensorName, (uniqueId + "_altitude_sensor").c_str());
-  strcpy(rssiSensorName, (uniqueId + "_rssi_sensor").c_str());
+  strcpy(tempSensorName,         (uniqueId + "_temperature_sensor").c_str());
+  strcpy(humidSensorName,        (uniqueId + "_humdity_sensor").c_str());
+  strcpy(presSensorName,         (uniqueId + "_pressure_sensor").c_str());
+  strcpy(altSensorName,          (uniqueId + "_altitude_sensor").c_str());
+  strcpy(rssiSensorName,         (uniqueId + "_rssi_sensor").c_str());
   strcpy(seaLevelPresSensorName, (uniqueId + "_sea_level_pressure_sensor").c_str());
-  strcpy(ipAddressSensorName, (uniqueId + "_ip_address_sensor").c_str());
+  strcpy(ipAddressSensorName,    (uniqueId + "_ip_address_sensor").c_str());
 
-  tempSensor = new HASensorNumber(tempSensorName, HASensorNumber::PrecisionP3);
-  humidSensor = new HASensorNumber(humidSensorName, HASensorNumber::PrecisionP3);
-  presSensor = new HASensorNumber(presSensorName, HASensorNumber::PrecisionP3);
-  altSensor = new HASensorNumber(altSensorName, HASensorNumber::PrecisionP3);
-  rssiSensor = new HASensorNumber(rssiSensorName, HASensorNumber::PrecisionP0);
+  tempSensor         = new HASensorNumber(tempSensorName, HASensorNumber::PrecisionP3);
+  humidSensor        = new HASensorNumber(humidSensorName, HASensorNumber::PrecisionP3);
+  presSensor         = new HASensorNumber(presSensorName, HASensorNumber::PrecisionP3);
+  altSensor          = new HASensorNumber(altSensorName, HASensorNumber::PrecisionP3);
+  rssiSensor         = new HASensorNumber(rssiSensorName, HASensorNumber::PrecisionP0);
   seaLevelPresSensor = new HASensorNumber(seaLevelPresSensorName, HASensorNumber::PrecisionP3);
-  ipAddressSensor = new HASensor(ipAddressSensorName);
+  ipAddressSensor    = new HASensor(ipAddressSensorName);
   
   tempSensor->setDeviceClass("temperature");
   tempSensor->setName("Temperature");
@@ -183,8 +211,8 @@ void setup() {
   ipAddressSensor->setIcon("mdi:ip");
   ipAddressSensor->setName("IP Address");
 
-  updateHtmlTemplate("/setup.template.html");
-  LOG.println("Refreshed /setup.html");
+  updateHtmlTemplate("/setup.template.html", "", "", "", "", "", false);
+  LOG_PRINTLN("setup.html updated");
 
   // wire up http server and paths
   wireWebServerAndPaths();
@@ -192,44 +220,80 @@ void setup() {
   // fire up mqtt client if in station mode
   if (wifimode == WIFI_STA) {
     mqtt.begin(config.mqtt_server, config.mqtt_user, config.mqtt_pwd);
-    LOG.println("MQTT started");
+    LOG_PRINTLN("MQTT started");
   }
 
+  // wire up our custom watchdog
+  #ifdef esp32
+    watchDogTimer = timerBegin(2, 80, true);
+    timerAttachInterrupt(watchDogTimer, &watchDogInterrupt, true);
+    timerAlarmWrite(watchDogTimer, WATCHDOG_TIMEOUT_S * 1000000, false);
+    timerAlarmEnable(watchDogTimer);
+  #else
+    ITimer.attachInterruptInterval(WATCHDOG_TIMEOUT_S * 1000000, TimerHandler);
+  #endif
+
+  LOG_PRINTLN("Watchdog started");
+
   // setup done
-  LOG.println("\nSystem Ready\n");
+  LOG_PRINTLN("\nSystem Ready");
 }
 
 void loop() {
+  // handle TelnetSpy if BME280_DEBUG is defined
+  LOG_HANDLE();
+
+  // handle a reboot request if pending
+  if (esp_reboot_requested) {
+    ElegantOTA.loop();
+    delay(1000);
+    LOG_PRINTLN("\nReboot triggered. . .");
+    LOG_HANDLE();
+    LOG_FLUSH();
+    ESP.restart();
+    while (1) {} // will never get here
+  }
+
   // captive portal if in AP mode
   if (wifimode == WIFI_AP) {
     dnsServer.processNextRequest();
   } else {
-    // handle MQTT
-    mqtt.loop();
+    if (wifiState == WIFI_DISCONNECTED) {
+      LOG_PRINTLN("sleeping for 180 seconds. . .");
+      for (tiny_int x = 0; x < 180; x++) {
+        delay(1000);
+        watchDogRefresh();
+      }
+      LOG_PRINTLN("\nRebooting due to no wifi connection");
+      esp_reboot_requested = true;
+      return;
+    }
+
+    if (config.mqtt_server_flag == CFG_SET) {
+      // handle MQTT
+      mqtt.loop();
+    }
+
+    // check for OTA
+    ArduinoOTA.handle();
+    ElegantOTA.loop();
   }
-
-  // check for OTA
-  ArduinoOTA.handle();
-  ElegantOTA.loop();
-
-  // handle TelnetSpy
-  SerialAndTelnet.handle();
-  checkForRemoteCommand();
 
   // rebuild setup.html on main thread
   if (setup_needs_update) {
-    LOG.println("----- rebuilding /setup.html");
-    updateHtmlTemplate("/setup.template.html");
-    LOG.println("-----  /setup.html rebuilt");
+    LOG_PRINTLN("\n----- rebuilding /setup.html");
+    updateHtmlTemplate("/setup.template.html", "", "", "", "", "",false);
+    LOG_PRINTLN("-----  /setup.html rebuilt");
     setup_needs_update = false;
   }
 
   const unsigned long sysmillis = millis();
 
   // recalibrate sea level hPa every 5 minutes
-  if (config.nws_station_flag == CFG_SET && samples.sample_count == 0 && (sysmillis - samples.last_pressure_calibration >= 300000 || samples.last_pressure_calibration == ULONG_MAX)) {
+  if (config.nws_station_flag == CFG_SET && samples.sample_count == 0 && 
+     (sysmillis - samples.last_pressure_calibration >= 300000 || samples.last_pressure_calibration == ULONG_MAX)) {
     SEALEVELPRESSURE_HPA = getSeaLevelPressure();
-    LOG.println("Sea Level hPa = " + String(SEALEVELPRESSURE_HPA) + "\n");
+    LOG_PRINTLN("\nSea Level hPa = " + String(SEALEVELPRESSURE_HPA));
     samples.last_pressure_calibration = sysmillis;
   }
 
@@ -268,32 +332,29 @@ void loop() {
     samples.pressure+=currentPres;
     samples.rssi+=currentRssi;
 
-    LOG.println("Gathered Sample #" + String(samples.sample_count));
+    LOG_PRINTLN("\nGathered Sample #" + String(samples.sample_count));
 
-    LOG.print(F("Temperature = "));
-    LOG.print(currentTemp / 1000.0, 3);
-    LOG.println(" *C");
+    LOG_PRINT(F("Temperature = "));
+    LOG_PRINT(currentTemp / 1000.0, 3);
+    LOG_PRINTLN(" *C");
 
-    LOG.print(F("Humidity    = "));
-    LOG.print(currentHumid / 1000.0, 3);
-    LOG.println(" %");
+    LOG_PRINT(F("Humidity    = "));
+    LOG_PRINT(currentHumid / 1000.0, 3);
+    LOG_PRINTLN(" %");
 
-    LOG.print(F("Altitude    = "));
-    LOG.print(currentAlt / 1000.0, 3);
-    LOG.println(" m");
+    LOG_PRINT(F("Altitude    = "));
+    LOG_PRINT(currentAlt / 1000.0, 3);
+    LOG_PRINTLN(" m");
 
-    LOG.print(F("Pressure    = "));
-    LOG.print(currentPres / 1000.0, 3);
-    LOG.println(" hPa");
+    LOG_PRINT(F("Pressure    = "));
+    LOG_PRINT(currentPres / 1000.0, 3);
+    LOG_PRINTLN(" hPa");
 
-    LOG.print(F("rssi        = "));
-    LOG.print(currentRssi * -1);
-    LOG.println(" dB\n");
+    LOG_PRINT(F("rssi        = "));
+    LOG_PRINT(currentRssi * -1);
+    LOG_PRINTLN(" dB");
 
     if (samples.sample_count >= config.samples_per_publish) {
-      // publish our normalized values 
-        LOG.println("\nNormalized Result (Published)");
-
         // remove highest and lowest values (outliers)
         samples.temperature = samples.temperature - (samples.low_temperature + samples.high_temperature);
         samples.humidity = samples.humidity - (samples.low_humidity + samples.high_humidity);
@@ -311,29 +372,32 @@ void loop() {
         const float finalPres = samples.pressure / samples.sample_count / 1000.0 * HPA_TO_INHG;
         const short finalRssi = samples.rssi / samples.sample_count * -1;
 
-        LOG.print(F("Temperature = "));
-        LOG.print(finalTemp, 3);
-        LOG.print(" *F (");
-        LOG.print(samples.temperature / samples.sample_count / 1000.0, 3);
-        LOG.println(" *C)");
+        // publish our normalized values 
+        LOG_PRINTLN("\nNormalized Result (Published)");
 
-        LOG.print(F("Humidity    = "));
-        LOG.print(finalHumid, 3);
-        LOG.println(" %");
+        LOG_PRINT(F("Temperature = "));
+        LOG_PRINT(finalTemp, 3);
+        LOG_PRINT(" *F (");
+        LOG_PRINT(samples.temperature / samples.sample_count / 1000.0, 3);
+        LOG_PRINTLN(" *C)");
 
-        LOG.print(F("Altitude    = "));
-        LOG.print(finalAlt, 3);
-        LOG.println(" m");
+        LOG_PRINT(F("Humidity    = "));
+        LOG_PRINT(finalHumid, 3);
+        LOG_PRINTLN(" %");
 
-        LOG.print(F("Pressure    = "));
-        LOG.print(finalPres, 3);
-        LOG.print(" inHg (");
-        LOG.print(samples.pressure / samples.sample_count / 1000.0, 3);
-        LOG.println(" hPa)");
+        LOG_PRINT(F("Altitude    = "));
+        LOG_PRINT(finalAlt, 3);
+        LOG_PRINTLN(" m");
 
-        LOG.print(F("rssi        = "));
-        LOG.print(finalRssi);
-        LOG.println(" dB\n");
+        LOG_PRINT(F("Pressure    = "));
+        LOG_PRINT(finalPres, 3);
+        LOG_PRINT(" inHg (");
+        LOG_PRINT(samples.pressure / samples.sample_count / 1000.0, 3);
+        LOG_PRINTLN(" hPa)");
+
+        LOG_PRINT(F("rssi        = "));
+        LOG_PRINT(finalRssi);
+        LOG_PRINTLN(" dB");
 
         if (isSampleValid(finalTemp)) tempSensor->setValue(finalTemp);
         if (isSampleValid(finalHumid)) humidSensor->setValue(finalHumid);
@@ -374,25 +438,23 @@ void loop() {
 
         samples.sample_count = 0;
 
+        printHeapStats();
         blink();
     }
     samples.last_update = sysmillis;
   }
 
-  // it doesn't seem right to never sleep so we'll delay for 1ms
-  delay(1);
-
   // reboot if in AP mode and no activity for 5 minutes
   if (wifimode == WIFI_AP && !ap_mode_activity && millis() >= 300000UL) {
-    ota_needs_reboot = true;
+    LOG_PRINTF("\nNo AP activity for 5 minutes -- triggering reboot");
+    esp_reboot_requested = true;
   }
 
-  if (ota_needs_reboot) {
-    ElegantOTA.loop();
-    delay(1000);
-    LOG.println("\nOTA Reboot Triggered. . .\n");
-    ESP.restart();
-    while (1) {
-    } // will never get here
+  // 24 hour mandatory reboot
+  if (millis() >= 86400000UL) {
+    LOG_PRINTF("\nTriggering mandatory 24 hour reboot");
+    esp_reboot_requested = true;
   }
+
+  watchDogRefresh();
 }
