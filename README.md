@@ -1,6 +1,6 @@
 
 # BME280
- Adafruit BME280 & ESP32 HA/MQTT Sensor Publisher
+ Adafruit BME280 & ESP32 or ESP8266 HA/MQTT Sensor Publisher
 <center><img width=40% src=https://cdn-shop.adafruit.com/970x728/2652-09.jpg></center>
 
 ## Attribution
