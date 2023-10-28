@@ -34,6 +34,7 @@ Wemos d1_mini, etc
 </center>
 
 #### NWS Weather Station Query for Sealevel Barometer (US only)
+https://www.weather.gov/documentation/services-web-api#/default/station_observation_latest
 https://w1.weather.gov/xml/current_obs/index.xml
 
 #### Filesystem & Flash Web OTA
