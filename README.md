@@ -14,15 +14,24 @@
 ESP32-D0WD-V3 (revision v3.0) 4MB Flash - NOT PICTURED
 <center><img width=40% src=https://i0.wp.com/randomnerdtutorials.com/wp-content/uploads/2019/06/ESP32-bme280_schematic.jpg></center>
 
+## ESP8266 Integration Notes
+Wemos d1_mini, etc
+
+![esp8266-bme280](https://github.com/synman/BME280/assets/1299716/cfc6e63f-b6f2-4f12-9771-97f32ba66e5d)
+
 ## Highlights
 #### Captive Portal Setup
 <img width="60%" alt="Captive Portal" src="https://github.com/synman/BME280/assets/1299716/6f1ab3e9-e20c-4dba-85e3-487158644624">
 
 #### Flexible Configuration Options
-<img width="60%" alt="Screenshot 2023-10-16 at 2 00 00 PM" src="https://github.com/synman/BME280/assets/1299716/5b484044-8537-42d1-bbc8-491dc4297c65">
+<img width="369" alt="Screenshot 2023-10-27 at 8 52 20 PM" src="https://github.com/synman/BME280/assets/1299716/9ce42e8d-92c2-4598-afb5-7471648152d3">
+
 
 #### Home Assistant Integration via MQTT
 <center>
  <img width="60%" alt="Screenshot 2023-10-16 at 2 03 42 PM" src="https://github.com/synman/BME280/assets/1299716/3c02cbec-e4ae-47b1-9cc5-74495fe54dfa">
  <img width="60%" alt="Screenshot 2023-10-16 at 2 05 01 PM" src="https://github.com/synman/BME280/assets/1299716/99f3e628-f59b-4bcb-8821-e54adf47c0ab">
 </center>
+
+#### NWS Weather Station Query for Sealevel Barometer (US only)
+https://w1.weather.gov/xml/current_obs/index.xml
