@@ -24,8 +24,7 @@ Wemos d1_mini, etc
 <img width="60%" alt="Captive Portal" src="https://github.com/synman/BME280/assets/1299716/6f1ab3e9-e20c-4dba-85e3-487158644624">
 
 #### Flexible Configuration Options
-<img width="369" alt="Screenshot 2023-10-27 at 8 52 20 PM" src="https://github.com/synman/BME280/assets/1299716/9ce42e8d-92c2-4598-afb5-7471648152d3">
-
+<img width="369" alt="Screenshot 2023-10-27 at 8 52 20 PM" src="https://github.com/synman/BME280/assets/1299716/153c9a17-e636-427d-876e-45293bfe459f">
 
 #### Home Assistant Integration via MQTT
 <center>
@@ -35,3 +34,6 @@ Wemos d1_mini, etc
 
 #### NWS Weather Station Query for Sealevel Barometer (US only)
 https://w1.weather.gov/xml/current_obs/index.xml
+
+#### Filesystem & Flash Web OTA
+<img width="364" alt="Screenshot 2023-10-27 at 8 52 48 PM" src="https://github.com/synman/BME280/assets/1299716/c3ef6776-ac74-46e9-88e6-7a2656217d5e">
