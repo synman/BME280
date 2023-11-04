@@ -48,7 +48,7 @@
         <table>
             <tr height="50px">
                 <th colspan="2">
-                    <img valign="middle" src="/favicon-32x32.png">&nbsp;BME280 Publisher Setup
+                    <img valign="middle" src="/favicon-32x32.png">&nbsp;{project_name} Setup
                 </th>
             </tr>
             <tr>
@@ -106,17 +106,16 @@
 
 	<script language="javascript">
         function save() { 
-            window.location.href=location.protocol + "//" + 
-                                 location.host + "/save/?hostname=" + 
-                                 hostname.value + "&ssid=" + 
-                                 ssid.value + "&ssid_pwd=" +
-                                 ssid_pwd.value + "&mqtt_server=" + 
-                                 mqtt_server.value + "&mqtt_user=" +
-                                 mqtt_user.value + "&mqtt_pwd=" + 
-                                 mqtt_pwd.value + "&samples_per_publish=" +
-                                 samples_per_publish.value + "&publish_interval=" +
-                                 publish_interval.value + "&nws_station=" +
-                                 nws_station.value;
+            window.location.href=location.protocol + "//" + location.host + 
+                                "/save/?hostname=" + hostname.value + 
+                                "&ssid=" +  ssid.value + 
+                                "&ssid_pwd=" + ssid_pwd.value + 
+                                "&mqtt_server=" + mqtt_server.value + 
+                                "&mqtt_user=" + mqtt_user.value + 
+                                "&mqtt_pwd=" + mqtt_pwd.value + 
+                                "&samples_per_publish=" + samples_per_publish.value + 
+                                "&publish_interval=" + publish_interval.value + 
+                                "&nws_station=" + nws_station.value;
         }
         
         function reboot() { window.location.href=location.protocol + "//" + location.host + "/reboot"; }

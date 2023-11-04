@@ -7,13 +7,171 @@ as published by Sam Hocevar. See the COPYING file for more details.
 ****************************************************************************/
 #include "main.h"
 
-void setup() {
-  INIT_LED;
-  
-  LOG_WELCOME_MSG("\n\nBME280 diagnostics - Press ? for a list of commands\n");
-  LOG_BEGIN(1500000);
+#ifdef BS_USE_TELNETSPY
+void setExtraRemoteCommands(char c) {
+  if (c == '?') {
+    LOG_PRINTLN(bs.builtInRemoteCommandsMenu + "P = Sea Level Pressure\n? = This menu\n");
+  }
+  if (c == 'P') {
+    SEALEVELPRESSURE_HPA = getSeaLevelPressure();
+    LOG_PRINTLN("\nSea Level Pressure: [" + String(SEALEVELPRESSURE_HPA) + "]\n");        
+  }
+}
+#endif
 
-  LOG_PRINTLN("\n\nBME280 Sensor Event Publisher v1.0.0");
+float finalTemp = 0.0;
+float finalHumid = 0.0;
+float finalAlt = 0.0;
+float finalPres = 0.0;
+short finalRssi = 0;
+
+void updateExtraConfigItem(const String item, String value) {
+    if (item == MQTT_SERVER) {
+      memset(bme280_config.mqtt_server, CFG_NOT_SET, MQTT_SERVER_LEN);
+      if (value.length() > 0) {
+          value.toCharArray(bme280_config.mqtt_server, MQTT_SERVER_LEN);
+          bme280_config.mqtt_server_flag = CFG_SET;
+      } else {
+          bme280_config.mqtt_server_flag = CFG_NOT_SET;
+      }
+      return;
+    }
+
+    if (item == MQTT_USER) {
+      memset(bme280_config.mqtt_user, CFG_NOT_SET, MQTT_USER_LEN);
+      if (value.length() > 0) {
+          value.toCharArray(bme280_config.mqtt_user, MQTT_USER_LEN);
+          bme280_config.mqtt_user_flag = CFG_SET;
+      } else {
+          bme280_config.mqtt_user_flag = CFG_NOT_SET;
+      }
+      return;
+    }
+
+    if (item == MQTT_PWD) {
+      memset(bme280_config.mqtt_pwd, CFG_NOT_SET, MQTT_PWD_LEN);
+      if (value.length() > 0) {
+          value.toCharArray(bme280_config.mqtt_pwd, MQTT_PWD_LEN);
+          bme280_config.mqtt_pwd_flag = CFG_SET;
+      } else {
+          bme280_config.mqtt_pwd_flag = CFG_NOT_SET;
+      }
+      return;
+    }
+
+    if (item == SAMPLES_PER_PUBLISH) {
+      if (value.toInt() > MIN_SAMPLES_PER_PUBLISH) {
+          bme280_config.samples_per_publish = value.toInt();
+          bme280_config.samples_per_publish_flag = CFG_SET;
+      } else {
+          bme280_config.samples_per_publish_flag = CFG_NOT_SET;
+          bme280_config.samples_per_publish = DEFAULT_SAMPLES_PER_PUBLISH;
+      }
+      return;
+    }
+
+    if (item ==PUBLISH_INTERVAL) {
+      const unsigned long publish_interval = strtoul(value.c_str(), 0, 10);
+      if (publish_interval > MIN_PUBLISH_INTERVAL && publish_interval != DEFAULT_PUBLISH_INTERVAL) {
+          bme280_config.publish_interval = publish_interval;
+          bme280_config.publish_interval_flag = CFG_SET;
+      } else {
+          bme280_config.publish_interval_flag = CFG_NOT_SET;
+          bme280_config.publish_interval = DEFAULT_PUBLISH_INTERVAL;
+      }
+      return;
+    }
+
+    if (item == NWS_STATION) {
+      memset(bme280_config.nws_station, CFG_NOT_SET, NWS_STATION_LEN);
+      if (value.length() > 0) {
+          value.toCharArray(bme280_config.nws_station, NWS_STATION_LEN);
+          bme280_config.nws_station_flag = CFG_SET;
+      } else {
+          bme280_config.nws_station_flag = CFG_NOT_SET;
+      }    
+      return;
+    }
+}
+void updateExtraHtmlTemplateItems(String *html) {
+  while (html->indexOf(escParam(MQTT_SERVER), 0) != -1) {
+    html->replace(escParam(MQTT_SERVER), String(bme280_config.mqtt_server));
+  }
+
+  while (html->indexOf(escParam(MQTT_USER), 0) != -1) {
+    html->replace(escParam(MQTT_USER), String(bme280_config.mqtt_user));
+  }
+
+  while (html->indexOf(escParam(MQTT_PWD), 0) != -1) {
+    html->replace(escParam(MQTT_PWD), String(bme280_config.mqtt_pwd));
+  }
+
+  while (html->indexOf(escParam(SAMPLES_PER_PUBLISH), 0) != -1) {
+    html->replace(escParam(SAMPLES_PER_PUBLISH), String(bme280_config.samples_per_publish));
+  }
+
+  while (html->indexOf(escParam(PUBLISH_INTERVAL), 0) != -1) {
+    html->replace(escParam(PUBLISH_INTERVAL), String(bme280_config.publish_interval));
+  }
+
+  while (html->indexOf(escParam(PUBLISH_INTERVAL_IN_SECONDS), 0) != -1) {
+    html->replace(escParam(PUBLISH_INTERVAL_IN_SECONDS), String(bme280_config.publish_interval / 1000));
+  }
+
+  while (html->indexOf(escParam(NWS_STATION), 0) != -1) {
+    html->replace(escParam(NWS_STATION), String(bme280_config.nws_station));
+  }
+
+  while (html->indexOf(escParam(TEMPERATURE), 0) != -1) {
+    html->replace(escParam(TEMPERATURE), toFloatStr(finalTemp, 3));
+  }
+
+  while (html->indexOf(escParam(HUMIDITY), 0) != -1) {
+    html->replace(escParam(HUMIDITY), toFloatStr(finalHumid, 3));
+  }
+
+  while (html->indexOf(escParam(ALTITUDE), 0) != -1) {
+    html->replace(escParam(ALTITUDE), toFloatStr(finalAlt, 3));
+  }
+
+  while (html->indexOf(escParam(PRESSURE), 0) != -1) {
+    html->replace(escParam(PRESSURE), toFloatStr(finalPres, 3));
+  }
+
+  while (html->indexOf(escParam(_RSSI), 0) != -1) {
+    html->replace(escParam(_RSSI), String(finalRssi));
+  }
+
+  while (html->indexOf(escParam(SEA_LEVEL_ATMOSPHERIC_PRESSURE), 0) != -1) {
+      html->replace(escParam(SEA_LEVEL_ATMOSPHERIC_PRESSURE), String(SEALEVELPRESSURE_HPA * HPA_TO_INHG));
+  }
+
+  const String ipAddr = bs.wifimode == WIFI_STA ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
+
+  while (html->indexOf(escParam(IP_ADDRESS), 0) != -1) {
+    html->replace(escParam(IP_ADDRESS), ipAddr);
+  }
+}
+
+void setup() {
+#ifdef BS_USE_TELNETSPY
+  bs.setExtraRemoteCommands(setExtraRemoteCommands);
+#endif
+  bs.updateExtraConfigItem(updateExtraConfigItem);
+  bs.saveExtraConfig([]() { bs.cfg(&bme280_config, sizeof(bme280_config)); });
+  bs.updateExtraHtmlTemplateItems(updateExtraHtmlTemplateItems);
+  bs.setConfigSize(sizeof(bme280_config));
+  bs.setup();
+
+  // get a fresh copy of our extended config struct and initialize it
+  memcpy(&bme280_config, bs.cfg(), sizeof(bme280_config));
+
+  updateExtraConfigItem(MQTT_SERVER, bme280_config.mqtt_server);
+  updateExtraConfigItem(MQTT_USER, bme280_config.mqtt_user);
+  updateExtraConfigItem(MQTT_PWD, bme280_config.mqtt_pwd);
+  updateExtraConfigItem(SAMPLES_PER_PUBLISH, String(bme280_config.samples_per_publish));
+  updateExtraConfigItem(PUBLISH_INTERVAL, String(bme280_config.publish_interval));
+  updateExtraConfigItem(NWS_STATION, bme280_config.nws_station);
 
   if (!bme.begin()) {
     LOG_PRINTLN("\nCould not find a valid BME280 sensor, check wiring!");
@@ -22,137 +180,9 @@ void setup() {
     bme_pressure->printSensorDetails();
     bme_humidity->printSensorDetails();
   }
-  
-  // wire up EEPROM storage and config
-  wireConfig();
-
-  // start and mount our littlefs file system
-  if (!LittleFS.begin()) {
-    LOG_PRINTLN("\nAn Error has occurred while initializing LittleFS\n");
-  } else {
-    #ifdef BME280_DEBUG
-      #ifdef esp32
-        const size_t fs_size = LittleFS.totalBytes() / 1000;
-        const size_t fs_used = LittleFS.usedBytes() / 1000;
-      #else
-        FSInfo fs_info;
-        LittleFS.info(fs_info);
-        const size_t fs_size = fs_info.totalBytes / 1000;
-        const size_t fs_used = fs_info.usedBytes / 1000;
-      #endif
-    #endif
-    LOG_PRINTLN();
-    LOG_PRINTLN("    Filesystem size: [" + String(fs_size) + "] KB");
-    LOG_PRINTLN("         Free space: [" + String(fs_size - fs_used) + "] KB");
-    LOG_PRINTLN("          Free Heap: [" + String(ESP.getFreeHeap()) + "]");
-  }
-
-  // Connect to Wi-Fi network with SSID and password
-  // or fall back to AP mode
-  WiFi.persistent(false);
-  WiFi.setAutoConnect(false);
-  WiFi.setAutoReconnect(false);
-  WiFi.hostname(config.hostname);
-  WiFi.mode(wifimode);
-
-  #ifdef esp32
-    static const wifi_event_id_t disconnectHandler = WiFi.onEvent([](WiFiEvent_t event) 
-      { 
-        wifiState = event; 
-        if (wifiState == WIFI_DISCONNECTED) {
-          LOG_PRINTLN("\nWiFi disconnected");
-          LOG_FLUSH();
-        }
-      });
-  #else
-    static const WiFiEventHandler disconnectHandler = WiFi.onStationModeDisconnected([](WiFiEventStationModeDisconnected event) 
-      {
-        LOG_PRINTF("\nWiFi disconnected - reason: %d\n", event.reason);
-        LOG_FLUSH();
-        wifiState = WIFI_DISCONNECTED;
-      });
-  #endif
-
-  // WiFi.scanNetworks will return the number of networks found
-  uint8_t nothing = 0;
-  uint8_t *bestBssid;
-  bestBssid = &nothing;
-  short bestRssi = SHRT_MIN;
-
-  LOG_PRINTLN("\nScanning Wi-Fi networks. . .");
-  int n = WiFi.scanNetworks();
-
-  // arduino is too stupid to know which AP has the best signal
-  // when connecting to an SSID with multiple BSSIDs (WAPs / Repeaters)
-  // so we find the best one and tell it to use it
-  if (n > 0 && String(config.ssid).length() > 0) {
-    for (int i = 0; i < n; ++i) {
-      LOG_PRINTF("   ssid: %s - rssi: %d\n", WiFi.SSID(i), WiFi.RSSI(i));
-      if (WiFi.SSID(i).equals(config.ssid) && WiFi.RSSI(i) > bestRssi) {
-        bestRssi = WiFi.RSSI(i);
-        bestBssid = WiFi.BSSID(i);
-      }
-    }
-  }
-
-  if (wifimode == WIFI_STA && bestRssi != SHRT_MIN) {
-    WiFi.disconnect();
-    delay(100);
-    LOG_PRINTF("\nConnecting to %s / %d dB ", config.ssid, bestRssi);
-    WiFi.begin(config.ssid, config.ssid_pwd, 0, bestBssid, true);
-    for (tiny_int x = 0; x < 120 && WiFi.status() != WL_CONNECTED; x++) {
-      blink();
-      LOG_PRINT(".");
-    }
-
-    LOG_PRINTLN();
-
-    if (WiFi.status() == WL_CONNECTED) {
-      // initialize time
-      struct tm timeinfo;
-      char timebuf[255];
-
-      configTime(0, 0, "pool.ntp.org");
-      setenv("TZ", "EST+5EDT,M3.2.0/2,M11.1.0/2", 1);
-      tzset();
-
-      if (!getLocalTime(&timeinfo)) {
-        LOG_PRINTLN("\nFailed to obtain time");
-      } else {
-        sprintf(timebuf, "%4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-        LOG_PRINT("\nCurrent Time: ");
-        LOG_PRINTLN(timebuf);
-      }
-    }
-  }
-
-  if (WiFi.status() != WL_CONNECTED || wifimode == WIFI_AP) {
-    wifimode = WIFI_AP;
-    WiFi.mode(wifimode);
-    WiFi.softAP(config.hostname);
-    dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
-    LOG_PRINTLN("\nSoftAP [" + String(config.hostname) + "] started");
-  }
-
-  LOG_PRINTLN();      
-  LOG_PRINT("    Hostname: "); LOG_PRINTLN(config.hostname);
-  LOG_PRINT("Connected to: "); LOG_PRINTLN(wifimode == WIFI_STA ? config.ssid : config.hostname);
-  LOG_PRINT("  IP address: "); LOG_PRINTLN(wifimode == WIFI_STA ? WiFi.localIP().toString() : WiFi.softAPIP().toString());
-  LOG_PRINT("        RSSI: "); LOG_PRINTLN(String(WiFi.RSSI()) + " dB");
-
-  // enable mDNS via espota and enable ota
-  wireArduinoOTA(config.hostname);
-
-  // begin Elegant OTA
-  ElegantOTA.begin(&server);
-  ElegantOTA.onStart(onOTAStart);
-  ElegantOTA.onProgress(onOTAProgress);
-  ElegantOTA.onEnd(onOTAEnd);
-
-  LOG_PRINTLN("ElegantOTA started");
 
   // set device details
-  String uniqueId = String(config.hostname);
+  String uniqueId = String(bme280_config.hostname);
   std::replace(uniqueId.begin(), uniqueId.end(), '-', '_');
 
   for (tiny_int i = 0; i < uniqueId.length(); i++) {
@@ -211,94 +241,38 @@ void setup() {
   ipAddressSensor->setIcon("mdi:ip");
   ipAddressSensor->setName("IP Address");
 
-  updateHtmlTemplate("/setup.template.html", "", "", "", "", "", false);
-  LOG_PRINTLN("setup.html updated");
-
-  // wire up http server and paths
-  wireWebServerAndPaths();
-
-  // fire up mqtt client if in station mode
-  if (wifimode == WIFI_STA) {
-    mqtt.begin(config.mqtt_server, config.mqtt_user, config.mqtt_pwd);
+  // fire up mqtt client if in station mode and mqtt server configured
+  if (bs.wifimode == WIFI_STA && bme280_config.mqtt_server_flag == CFG_SET) {
+    mqtt.begin(bme280_config.mqtt_server, bme280_config.mqtt_user, bme280_config.mqtt_pwd);
     LOG_PRINTLN("MQTT started");
   }
 
-  // wire up our custom watchdog
-  #ifdef esp32
-    watchDogTimer = timerBegin(2, 80, true);
-    timerAttachInterrupt(watchDogTimer, &watchDogInterrupt, true);
-    timerAlarmWrite(watchDogTimer, WATCHDOG_TIMEOUT_S * 1000000, false);
-    timerAlarmEnable(watchDogTimer);
-  #else
-    ITimer.attachInterruptInterval(WATCHDOG_TIMEOUT_S * 1000000, TimerHandler);
-  #endif
-
-  LOG_PRINTLN("Watchdog started");
-
   // setup done
-  LOG_PRINTLN("\nSystem Ready");
+  LOG_PRINTLN("\nSystem Ready\n");
 }
 
 void loop() {
-  // handle TelnetSpy if BME280_DEBUG is defined
-  LOG_HANDLE();
-
-  // handle a reboot request if pending
-  if (esp_reboot_requested) {
-    ElegantOTA.loop();
-    delay(1000);
-    LOG_PRINTLN("\nReboot triggered. . .");
-    LOG_HANDLE();
-    LOG_FLUSH();
-    ESP.restart();
-    while (1) {} // will never get here
+  bs.loop();
+  
+  if (bs.wifimode == WIFI_STA && bme280_config.mqtt_server_flag == CFG_SET) {
+    // handle MQTT
+    mqtt.loop();
   }
-
-  // captive portal if in AP mode
-  if (wifimode == WIFI_AP) {
-    dnsServer.processNextRequest();
-  } else {
-    if (wifiState == WIFI_DISCONNECTED) {
-      LOG_PRINTLN("sleeping for 180 seconds. . .");
-      for (tiny_int x = 0; x < 180; x++) {
-        delay(1000);
-        watchDogRefresh();
-      }
-      LOG_PRINTLN("\nRebooting due to no wifi connection");
-      esp_reboot_requested = true;
-      return;
-    }
-
-    if (config.mqtt_server_flag == CFG_SET) {
-      // handle MQTT
-      mqtt.loop();
-    }
-
-    // check for OTA
-    ArduinoOTA.handle();
-    ElegantOTA.loop();
-  }
-
-  // rebuild setup.html on main thread
-  if (setup_needs_update) {
-    LOG_PRINTLN("\n----- rebuilding /setup.html");
-    updateHtmlTemplate("/setup.template.html", "", "", "", "", "",false);
-    LOG_PRINTLN("-----  /setup.html rebuilt");
-    setup_needs_update = false;
-  }
-
+  
   const unsigned long sysmillis = millis();
 
   // recalibrate sea level hPa every 5 minutes
-  if (config.nws_station_flag == CFG_SET && samples.sample_count == 0 && 
+  if (bme280_config.nws_station_flag == CFG_SET && samples.sample_count == 0 && 
      (sysmillis - samples.last_pressure_calibration >= 300000 || samples.last_pressure_calibration == ULONG_MAX)) {
     SEALEVELPRESSURE_HPA = getSeaLevelPressure();
-    LOG_PRINTLN("\nSea Level hPa = " + String(SEALEVELPRESSURE_HPA));
+    #ifdef BME280_LOG_LEVEL_BASIC
+      LOG_PRINTLN("Sea Level hPa = " + String(SEALEVELPRESSURE_HPA));
+    #endif
     samples.last_pressure_calibration = sysmillis;
   }
 
   // collect a sample every (publish_interval / samples_per_publish) seconds
-  if (sysmillis - samples.last_update >= config.publish_interval / config.samples_per_publish || samples.last_update == ULONG_MAX) {
+  if (sysmillis - samples.last_update >= bme280_config.publish_interval / bme280_config.samples_per_publish || samples.last_update == ULONG_MAX) {
     sensors_event_t temp_event, pressure_event, humidity_event;
     samples.sample_count++;
 
@@ -332,29 +306,33 @@ void loop() {
     samples.pressure+=currentPres;
     samples.rssi+=currentRssi;
 
-    LOG_PRINTLN("\nGathered Sample #" + String(samples.sample_count));
+    #ifdef BME280_LOG_LEVEL_BASIC
+      LOG_PRINTLN("Gathered Sample #" + String(samples.sample_count));
+    #endif
 
-    LOG_PRINT(F("Temperature = "));
-    LOG_PRINT(currentTemp / 1000.0, 3);
-    LOG_PRINTLN(" *C");
+    #ifdef BME280_LOG_LEVEL_FULL
+      LOG_PRINT(F("Temperature = "));
+      LOG_PRINT(currentTemp / 1000.0, 3);
+      LOG_PRINTLN(" *C");
 
-    LOG_PRINT(F("Humidity    = "));
-    LOG_PRINT(currentHumid / 1000.0, 3);
-    LOG_PRINTLN(" %");
+      LOG_PRINT(F("Humidity    = "));
+      LOG_PRINT(currentHumid / 1000.0, 3);
+      LOG_PRINTLN(" %");
 
-    LOG_PRINT(F("Altitude    = "));
-    LOG_PRINT(currentAlt / 1000.0, 3);
-    LOG_PRINTLN(" m");
+      LOG_PRINT(F("Altitude    = "));
+      LOG_PRINT(currentAlt / 1000.0, 3);
+      LOG_PRINTLN(" m");
 
-    LOG_PRINT(F("Pressure    = "));
-    LOG_PRINT(currentPres / 1000.0, 3);
-    LOG_PRINTLN(" hPa");
+      LOG_PRINT(F("Pressure    = "));
+      LOG_PRINT(currentPres / 1000.0, 3);
+      LOG_PRINTLN(" hPa");
 
-    LOG_PRINT(F("rssi        = "));
-    LOG_PRINT(currentRssi * -1);
-    LOG_PRINTLN(" dB");
+      LOG_PRINT(F("rssi        = "));
+      LOG_PRINT(currentRssi * -1);
+      LOG_PRINTLN(" dB");
+    #endif
 
-    if (samples.sample_count >= config.samples_per_publish) {
+    if (samples.sample_count >= bme280_config.samples_per_publish) {
         // remove highest and lowest values (outliers)
         samples.temperature = samples.temperature - (samples.low_temperature + samples.high_temperature);
         samples.humidity = samples.humidity - (samples.low_humidity + samples.high_humidity);
@@ -366,38 +344,42 @@ void loop() {
         samples.sample_count-=2;
 
         // use the average of what remains
-        const float finalTemp = samples.temperature / samples.sample_count / 1000.0 * 1.8 + 32;
-        const float finalHumid = samples.humidity / samples.sample_count / 1000.0;
-        const float finalAlt = samples.altitude / samples.sample_count / 1000.0;
-        const float finalPres = samples.pressure / samples.sample_count / 1000.0 * HPA_TO_INHG;
-        const short finalRssi = samples.rssi / samples.sample_count * -1;
+        finalTemp = samples.temperature / samples.sample_count / 1000.0 * 1.8 + 32;
+        finalHumid = samples.humidity / samples.sample_count / 1000.0;
+        finalAlt = samples.altitude / samples.sample_count / 1000.0;
+        finalPres = samples.pressure / samples.sample_count / 1000.0 * HPA_TO_INHG;
+        finalRssi = samples.rssi / samples.sample_count * -1;
 
         // publish our normalized values 
-        LOG_PRINTLN("\nNormalized Result (Published)");
+        #ifdef BME280_LOG_LEVEL_BASIC
+          LOG_PRINTLN("Normalized Result (Published)");
+        #endif
 
-        LOG_PRINT(F("Temperature = "));
-        LOG_PRINT(finalTemp, 3);
-        LOG_PRINT(" *F (");
-        LOG_PRINT(samples.temperature / samples.sample_count / 1000.0, 3);
-        LOG_PRINTLN(" *C)");
+        #ifdef BME280_LOG_LEVEL_FULL
+          LOG_PRINT(F("Temperature = "));
+          LOG_PRINT(finalTemp, 3);
+          LOG_PRINT(" *F (");
+          LOG_PRINT(samples.temperature / samples.sample_count / 1000.0, 3);
+          LOG_PRINTLN(" *C)");
 
-        LOG_PRINT(F("Humidity    = "));
-        LOG_PRINT(finalHumid, 3);
-        LOG_PRINTLN(" %");
+          LOG_PRINT(F("Humidity    = "));
+          LOG_PRINT(finalHumid, 3);
+          LOG_PRINTLN(" %");
 
-        LOG_PRINT(F("Altitude    = "));
-        LOG_PRINT(finalAlt, 3);
-        LOG_PRINTLN(" m");
+          LOG_PRINT(F("Altitude    = "));
+          LOG_PRINT(finalAlt, 3);
+          LOG_PRINTLN(" m");
 
-        LOG_PRINT(F("Pressure    = "));
-        LOG_PRINT(finalPres, 3);
-        LOG_PRINT(" inHg (");
-        LOG_PRINT(samples.pressure / samples.sample_count / 1000.0, 3);
-        LOG_PRINTLN(" hPa)");
+          LOG_PRINT(F("Pressure    = "));
+          LOG_PRINT(finalPres, 3);
+          LOG_PRINT(" inHg (");
+          LOG_PRINT(samples.pressure / samples.sample_count / 1000.0, 3);
+          LOG_PRINTLN(" hPa)");
 
-        LOG_PRINT(F("rssi        = "));
-        LOG_PRINT(finalRssi);
-        LOG_PRINTLN(" dB");
+          LOG_PRINT(F("rssi        = "));
+          LOG_PRINT(finalRssi);
+          LOG_PRINTLN(" dB");
+        #endif
 
         if (isSampleValid(finalTemp)) tempSensor->setValue(finalTemp);
         if (isSampleValid(finalHumid)) humidSensor->setValue(finalHumid);
@@ -405,17 +387,12 @@ void loop() {
         if (isSampleValid(finalPres)) presSensor->setValue(finalPres);
         if (isSampleValid(finalRssi)) rssiSensor->setValue(finalRssi);
 
-        if (isSampleValid(SEALEVELPRESSURE_HPA) && config.nws_station_flag == CFG_SET) seaLevelPresSensor->setValue(SEALEVELPRESSURE_HPA * HPA_TO_INHG);
+        if (isSampleValid(SEALEVELPRESSURE_HPA) && bme280_config.nws_station_flag == CFG_SET) seaLevelPresSensor->setValue(SEALEVELPRESSURE_HPA * HPA_TO_INHG);
 
-        const String ipAddr = wifimode == WIFI_STA ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
-        ipAddressSensor->setValue(ipAddr.c_str());
+        if (bs.wifimode == WIFI_STA) 
+          ipAddressSensor->setValue(WiFi.localIP().toString().c_str());
         
-        updateHtmlTemplate("/index.template.html", 
-                            toFloatStr(finalTemp, 3), 
-                            toFloatStr(finalHumid, 3), 
-                            toFloatStr(finalAlt, 3), 
-                            toFloatStr(finalPres, 3), 
-                            String(finalRssi));
+        bs.updateHtmlTemplate("/index.template.html", false);
 
         // reset our samples structure
         samples.temperature = 0L;
@@ -439,22 +416,182 @@ void loop() {
         samples.sample_count = 0;
 
         printHeapStats();
-        blink();
+        bs.blink();
     }
     samples.last_update = sysmillis;
   }
+}
 
-  // reboot if in AP mode and no activity for 5 minutes
-  if (wifimode == WIFI_AP && !ap_mode_activity && millis() >= 300000UL) {
-    LOG_PRINTF("\nNo AP activity for 5 minutes -- triggering reboot");
-    esp_reboot_requested = true;
+const bool isSampleValid(const float value) {
+    return value < SHRT_MAX && value > SHRT_MIN;
+}
+
+const String toFloatStr(const float value, const short decimal_places) {
+    char buf[20];
+    sprintf(buf, "%.*f", decimal_places, value);
+    return String(buf);
+}
+
+const float getSeaLevelPressure() {
+    if (bme280_config.nws_station_flag == CFG_NOT_SET) {
+        #ifdef BME280_LOG_LEVEL_FULL
+          LOG_PRINTLN("NWS Station is not set - using default sea level pressure");
+        #endif
+        return DEFAULT_SEALEVELPRESSURE_HPA;
+    }
+
+    if (bs.wifimode == WIFI_AP) {
+        #ifdef BME280_LOG_LEVEL_FULL
+          LOG_PRINTLN("In AP mode - altitude will be ignored");
+        #endif
+        return INVALID_SEALEVELPRESSURE_HPA;
+    }
+
+    const String observationsUrl = "https://api.weather.gov/stations/" + String(bme280_config.nws_station) + "/observations/latest";
+
+#ifdef esp32
+    DynamicJsonDocument doc(8192);
+    WiFiClientSecure httpsClient;
+    
+    httpsClient.setInsecure();
+    httpsClient.setTimeout(5000);
+
+    if (httpsClient.connect("api.weather.gov", 443)) {
+        httpsClient.println("GET " + observationsUrl + " HTTP/1.0");
+        httpsClient.println("Host: api.weather.gov");
+        httpsClient.println("User-Agent: curl/8.1.2");
+        httpsClient.println("Accept: application/json");
+        httpsClient.println("Connection: close");
+        httpsClient.println();
+    } else {
+        LOG_PRINTLN("Unable to connect to NWS - altitude will be ignored");
+        return INVALID_SEALEVELPRESSURE_HPA;
+    }
+
+    // read headers
+    while (httpsClient.connected()) {
+        String line = httpsClient.readStringUntil('\n');
+        if (line == "\r") break;
+    }
+
+    if (!httpsClient.connected()) {
+        LOG_PRINTLN("NWS dropped connnection - altitude will be ignored");
+        return INVALID_SEALEVELPRESSURE_HPA;
+    }
+
+    deserializeJson(doc, httpsClient.readString());
+    httpsClient.stop();
+
+    String properties = doc["properties"];
+    deserializeJson(doc, properties);
+    String seaLevelPressure = doc["seaLevelPressure"];
+    deserializeJson(doc, seaLevelPressure);
+
+    String value = doc["value"];
+
+    if (isNumeric(value)) {
+        return value.toInt() / 100.0;
+    } 
+
+    LOG_PRINTLN("Invalid response from NWS - altitude will be ignored");
+    return INVALID_SEALEVELPRESSURE_HPA;
+#else
+    HTTPClient httpClient;
+    std::unique_ptr<BearSSL::WiFiClientSecure>httpsClient(new BearSSL::WiFiClientSecure);
+
+    httpsClient->setInsecure();
+    httpsClient->setTimeout(3000);
+    httpsClient->setBufferSizes(4096, 255);
+
+    if (httpClient.begin(*httpsClient, observationsUrl)) {
+        httpClient.addHeader("Host", "api.weather.gov");
+        httpClient.addHeader("Accept", "application/json");
+        httpClient.addHeader("User-Agent", "curl/8.1.2");
+        httpClient.addHeader("Connection", "close");
+
+        char last[257] = {0};
+        char data[129] = {0};
+
+        if (httpClient.GET() == HTTP_CODE_OK) {
+          while (httpClient.getStream().available()) {
+            size_t bytes = httpClient.getStream().readBytes(data, 128);
+            data[bytes] = 0;
+            strcat(last, data);
+
+            if (strstr(last, "visibility")) {
+              const String parse = String(last);
+              const int start = parse.indexOf("\"value\": ");
+              const int end = parse.indexOf(",", start);
+              String pa = parse.substring(start + 9, end);
+
+              if (isNumeric(pa)) {
+                httpClient.end();
+                return pa.toInt() / 100.0;
+              } else {
+                httpClient.end();
+                LOG_PRINTLN("Bad response from NWS - altitude will be ignored");    
+                return INVALID_SEALEVELPRESSURE_HPA;
+              }
+            }
+
+            memcpy(last, data, bytes + 1);
+          }
+          httpClient.end();
+          LOG_PRINTLN("Sea Level Barometer missing from NWS response - altitude will be ignored");    
+          return INVALID_SEALEVELPRESSURE_HPA;
+        } else {
+            httpClient.end();
+            LOG_PRINTLN("Bad HTTP Response Code from NWS - altitude will be ignored");
+            return INVALID_SEALEVELPRESSURE_HPA;
+        }
+    } else {
+        httpClient.end();
+        LOG_PRINTLN("Unable to connect to NWS - altitude will be ignored");
+        return INVALID_SEALEVELPRESSURE_HPA;
+    }
+#endif
+}
+
+const bool isNumeric(const String str) {
+  bool seenDecimal = false;
+ 
+  if (str.length() == 0) return false;
+  
+  for (tiny_int i = 0; i < str.length() ; ++i) {
+    if (isDigit(str.charAt(i))) continue;
+    if (str.charAt(i) == '.') {
+      if (seenDecimal) return false;
+      seenDecimal = true;
+      continue;
+    }
+    return false;
   }
+  return true;
+}
 
-  // 24 hour mandatory reboot
-  if (millis() >= 86400000UL) {
-    LOG_PRINTF("\nTriggering mandatory 24 hour reboot");
-    esp_reboot_requested = true;
-  }
+const String escParam(const char * param_name) {
+  char buf[64];
+  sprintf(buf, "{%s}", param_name);
+  return String(buf);
+}
 
-  watchDogRefresh();
+void printHeapStats() {
+  #ifdef BME280_LOG_LEVEL_BASIC
+    uint32_t myfree;
+    uint32_t mymax;
+    uint8_t myfrag;
+
+    #ifdef esp32 
+      const uint32_t size = ESP.getHeapSize();
+      const uint32_t free = ESP.getFreeHeap();
+      const uint32_t max = ESP.getMaxAllocHeap();
+      const uint32_t min = ESP.getMinFreeHeap();
+      LOG_PRINTF("(%ld) -> size: %5d - free: %5d - max: %5d - min: %5d <-\n", millis(), size, free, max, min);
+    #else
+      ESP.getHeapStats(&myfree, &mymax, &myfrag);
+      LOG_PRINTF("(%ld) -> free: %5d - max: %5d - frag: %3d%% <-\n", millis(), myfree, mymax, myfrag);
+    #endif
+  #endif
+
+  return;
 }
