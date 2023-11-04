@@ -145,12 +145,6 @@ void updateExtraHtmlTemplateItems(String *html) {
   while (html->indexOf(escParam(SEA_LEVEL_ATMOSPHERIC_PRESSURE), 0) != -1) {
       html->replace(escParam(SEA_LEVEL_ATMOSPHERIC_PRESSURE), String(SEALEVELPRESSURE_HPA * HPA_TO_INHG));
   }
-
-  const String ipAddr = bs.wifimode == WIFI_STA ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
-
-  while (html->indexOf(escParam(IP_ADDRESS), 0) != -1) {
-    html->replace(escParam(IP_ADDRESS), ipAddr);
-  }
 }
 
 void setup() {

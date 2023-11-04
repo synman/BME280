@@ -54,7 +54,8 @@
         "compare": "cpp",
         "ranges": "cpp",
         "ratio": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "mutex": "cpp"
     },
     "cmake.configureOnOpen": false
 }
