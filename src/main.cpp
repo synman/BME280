@@ -200,12 +200,12 @@ void setup() {
   strcpy(seaLevelPresSensorName, (uniqueId + "_sea_level_pressure_sensor").c_str());
   strcpy(ipAddressSensorName,    (uniqueId + "_ip_address_sensor").c_str());
 
-  tempSensor         = new HASensorNumber(tempSensorName, HASensorNumber::PrecisionP3);
-  humidSensor        = new HASensorNumber(humidSensorName, HASensorNumber::PrecisionP3);
-  presSensor         = new HASensorNumber(presSensorName, HASensorNumber::PrecisionP3);
-  altSensor          = new HASensorNumber(altSensorName, HASensorNumber::PrecisionP3);
+  tempSensor         = new HASensorNumber(tempSensorName, HASensorNumber::PrecisionP1);
+  humidSensor        = new HASensorNumber(humidSensorName, HASensorNumber::PrecisionP0);
+  presSensor         = new HASensorNumber(presSensorName, HASensorNumber::PrecisionP2);
+  altSensor          = new HASensorNumber(altSensorName, HASensorNumber::PrecisionP1);
   rssiSensor         = new HASensorNumber(rssiSensorName, HASensorNumber::PrecisionP0);
-  seaLevelPresSensor = new HASensorNumber(seaLevelPresSensorName, HASensorNumber::PrecisionP3);
+  seaLevelPresSensor = new HASensorNumber(seaLevelPresSensorName, HASensorNumber::PrecisionP2);
   ipAddressSensor    = new HASensor(ipAddressSensorName);
   
   tempSensor->setDeviceClass("temperature");
