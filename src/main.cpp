@@ -151,14 +151,10 @@ void setup() {
 #ifdef BS_USE_TELNETSPY
   bs.setExtraRemoteCommands(setExtraRemoteCommands);
 #endif
+  bs.setConfig(&bme280_config, sizeof(bme280_config));
   bs.updateExtraConfigItem(updateExtraConfigItem);
-  bs.saveExtraConfig([]() { bs.cfg(&bme280_config, sizeof(bme280_config)); });
   bs.updateExtraHtmlTemplateItems(updateExtraHtmlTemplateItems);
-  bs.setConfigSize(sizeof(bme280_config));
   bs.setup();
-
-  // get a fresh copy of our extended config struct and initialize it
-  memcpy(&bme280_config, bs.cfg(), sizeof(bme280_config));
 
   updateExtraConfigItem(MQTT_SERVER, bme280_config.mqtt_server);
   updateExtraConfigItem(MQTT_USER, bme280_config.mqtt_user);
